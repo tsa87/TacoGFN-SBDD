@@ -10,13 +10,12 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch_geometric.data as gd
-from tacogfn.config import Config
-from tacogfn.trainer import GFNAlgorithm
 from torch import Tensor
 from torch_scatter import scatter, scatter_sum
 
 from tacogfn.algo.config import TBVariant
 from tacogfn.algo.graph_sampling import GraphSampler
+from tacogfn.config import Config
 from tacogfn.envs.graph_building_env import (
     Graph,
     GraphAction,
@@ -26,6 +25,7 @@ from tacogfn.envs.graph_building_env import (
     GraphBuildingEnvContext,
     generate_forward_trajectory,
 )
+from tacogfn.trainer import GFNAlgorithm
 
 
 def shift_right(x: torch.Tensor, z=0):
