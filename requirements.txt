@@ -3,7 +3,6 @@ scipy
 networkx
 tensorboard
 cvxopt
-numpy
 GitPython
 botorch
 biopython

@@ -1,6 +1,10 @@
 dataset/
+model/weights
 tools/
 src/logs
+docking_temp/
+misc/*
+model_weights/*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
