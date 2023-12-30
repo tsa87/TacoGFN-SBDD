@@ -9,14 +9,12 @@ sudo apt-get install libxau6
 conda env create -f environment.yml
 ```
 
-2. Download and unzip ReDocked CrossDock dataset
-```bash
-sh scripts/download_and_extract_crossdocked.sh
+2. Download and unzip PDBBind dataset
+TODO: add instructions; move all protein.pdb, ligand.pdb into folder
+```bash 
 ```
 
-3. Download and unzip raw CrossDock dataset
-TODO: Write a script to download CrossDock dataset.
-Only need to retain *.pdb files  
+3. Compute pharmacophore models
 ```bash
 ```
 

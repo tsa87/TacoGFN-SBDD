@@ -58,9 +58,9 @@ class PharmacophoreGraphDataset(data.Dataset):
     Returned graphs are of type `torch_geometric.data.Data` with attributes
 
     - seq sequence of pharmacophore interaction types, shape [n_nodes]
-    -node_s     node scalar features, shape [n_nodes, 6]
-    -node_v     node vector features, shape [n_nodes, 3, 3]
-    -edge_s     edge scalar features, shape [n_edges, 32]
+    -node_s     node scalar features, shape [n_nodes, 24]
+    -node_v     node vector features, shape [n_nodes, 1, 3]
+    -edge_s     edge scalar features, shape [n_edges, 24]
     -edge_v     edge scalar features, shape [n_edges, 1, 3]
 
     """
