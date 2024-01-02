@@ -1,11 +1,11 @@
 from dataclasses import dataclass
 from typing import Optional
 
-from tacogfn.algo.config import AlgoConfig
-from tacogfn.data.config import ReplayConfig
-from tacogfn.models.config import ModelConfig
-from tacogfn.tasks.config import TasksConfig
-from tacogfn.utils.config import ConditionalsConfig
+from src.tacogfn.algo.config import AlgoConfig
+from src.tacogfn.data.config import ReplayConfig
+from src.tacogfn.models.config import ModelConfig
+from src.tacogfn.tasks.config import TasksConfig
+from src.tacogfn.utils.config import ConditionalsConfig
 from omegaconf import MISSING
 
 

@@ -14,10 +14,10 @@ from torch import Tensor
 from torch.distributions.dirichlet import Dirichlet
 from torch_geometric import data as gd
 
-from tacogfn.config import Config
-from tacogfn.utils import metrics
-from tacogfn.utils.focus_model import TabularFocusModel
-from tacogfn.utils.transforms import thermometer
+from src.tacogfn.config import Config
+from src.tacogfn.utils import metrics
+from src.tacogfn.utils.focus_model import TabularFocusModel
+from src.tacogfn.utils.transforms import thermometer
 
 
 class Conditional(abc.ABC):

@@ -9,10 +9,10 @@ import torch
 import torch.nn as nn
 import torch_geometric.data as gd
 import torch_geometric.nn as gnn
-from tacogfn.config import Config
+from src.tacogfn.config import Config
 from torch_geometric.utils import add_self_loops
 
-from tacogfn.envs.graph_building_env import GraphActionCategorical, GraphActionType
+from src.tacogfn.envs.graph_building_env import GraphActionCategorical, GraphActionType
 
 
 def mlp(n_in, n_hid, n_out, n_layer, act=nn.LeakyReLU):
@@ -287,6 +287,10 @@ class GraphTransformerGFN(nn.Module):
 
     def forward(self, g: gd.Batch, cond: torch.Tensor):
         node_embeddings, graph_embeddings = self.transf(g, cond)
+        return self._forward_after_transf(g, node_embeddings, graph_embeddings)
+    
+    
+    def _forward_after_transf(self, g: gd.Batch, node_embeddings, graph_embeddings):
         # "Non-edges" are edges not currently in the graph that we could add
         if hasattr(g, "non_edge_index"):
             ne_row, ne_col = g.non_edge_index

@@ -11,8 +11,8 @@ import rdkit.Chem as Chem
 import torch
 import torch_geometric.data as gd
 
-from tacogfn.const import fragment_const
-from tacogfn.envs.graph_building_env import (
+from src.tacogfn.const import fragment_const
+from src.tacogfn.envs.graph_building_env import (
     Graph,
     GraphAction,
     GraphActionType,

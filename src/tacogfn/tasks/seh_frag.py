@@ -17,12 +17,12 @@ from rdkit.Chem.rdchem import Mol as RDMol
 from torch import Tensor
 from torch.utils.data import Dataset
 
-from tacogfn.config import Config
-from tacogfn.envs.frag_mol_env import FragMolBuildingEnvContext, Graph
-from tacogfn.models import bengio2021flow
-from tacogfn.online_trainer import StandardOnlineTrainer
-from tacogfn.trainer import FlatRewards, GFNTask, RewardScalar
-from tacogfn.utils.conditioning import TemperatureConditional
+from src.tacogfn.config import Config
+from src.tacogfn.envs.frag_mol_env import FragMolBuildingEnvContext, Graph
+from src.tacogfn.models import bengio2021flow
+from src.tacogfn.online_trainer import StandardOnlineTrainer
+from src.tacogfn.trainer import FlatRewards, GFNTask, RewardScalar
+from src.tacogfn.utils.conditioning import TemperatureConditional
 
 
 class SEHTask(GFNTask):

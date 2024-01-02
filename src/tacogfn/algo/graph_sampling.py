@@ -10,13 +10,13 @@ import torch
 import torch.nn as nn
 from torch import Tensor
 
-from tacogfn.envs.graph_building_env import (
+from src.tacogfn.envs.graph_building_env import (
     Graph,
     GraphAction,
     GraphActionCategorical,
     GraphActionType,
 )
-from tacogfn.models.graph_transformer import GraphTransformerGFN
+from src.tacogfn.models.graph_transformer import GraphTransformerGFN
 
 
 def relabel(g: Graph, ga: GraphAction):

@@ -12,9 +12,9 @@ import torch
 from omegaconf import OmegaConf
 from torch import Tensor
 
-from tacogfn.algo.trajectory_balance import TrajectoryBalance
-from tacogfn.data.replay_buffer import ReplayBuffer
-from tacogfn.models.graph_transformer import GraphTransformerGFN
+from src.tacogfn.algo.trajectory_balance import TrajectoryBalance
+from src.tacogfn.data.replay_buffer import ReplayBuffer
+from src.tacogfn.models.graph_transformer import GraphTransformerGFN
 
 from .trainer import GFNTrainer
 

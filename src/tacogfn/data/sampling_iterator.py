@@ -15,8 +15,8 @@ import torch.nn as nn
 from rdkit import RDLogger
 from torch.utils.data import Dataset, IterableDataset
 
-from tacogfn.data.replay_buffer import ReplayBuffer
-from tacogfn.envs.graph_building_env import GraphActionCategorical
+from src.tacogfn.data.replay_buffer import ReplayBuffer
+from src.tacogfn.envs.graph_building_env import GraphActionCategorical
 
 
 class SamplingIterator(IterableDataset):
