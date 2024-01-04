@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch_geometric.data as gd
 from torch_geometric.nn import global_add_pool
 
+from src.tacogfn.data.utils import hetero_batch_to_batch
 from src.tacogfn.models import graph_transformer, gvp_model
 
 
@@ -52,15 +53,17 @@ class PharmacophoreConditionalGraphTransformer(nn.Module):
         graph_embeddings = global_add_pool(node_embeddings, pharmacophore.batch)
         return graph_embeddings
 
-    def forward(self, g: gd.Batch, cond: torch.Tensor):
-        compound_data = g["compound"]
-        pharmacophore_data = g["pharmacophore"]
+    def forward(self, mol_g: gd.Batch, pharmaco_g: gd.Batch, cond: torch.Tensor = None):
+        pharmacophore_embedding = self.encode_pharmacophore(pharmaco_g)
 
-        pharmacophore_embedding = self.encode_pharmacophore(pharmacophore_data)
+        # Concatenate pharmacophore and conditional embeddings
+        # (if conditional embeddings are provided)
+        if cond is not None:
+            cond_cat = torch.cat([cond, pharmacophore_embedding], dim=-1)
+        else:
+            cond_cat = pharmacophore_embedding
 
-        return self.graph_transformer(
-            compound_data, torch.cat([cond, pharmacophore_embedding], dim=-1)
-        )
+        return self.graph_transformer(mol_g, cond_cat)
 
 
 class PharmacophoreConditionalGraphTransformerGFN(
@@ -75,30 +78,42 @@ class PharmacophoreConditionalGraphTransformerGFN(
         env_ctx,
         cfg,
         num_graph_out=1,
-        do_bckwd=False,
+        do_bck=False,
     ):
         super().__init__(
             env_ctx,
             cfg,
             num_graph_out=num_graph_out,
-            do_bckwd=do_bckwd,
+            do_bck=do_bck,
         )
+        num_emb = cfg.model.num_emb
+
         self.transf = PharmacophoreConditionalGraphTransformer(
-            pharmacophore_dim=cfg.pharmacophore_dim,
+            pharmacophore_dim=cfg.model.pharmaco_cond.pharmaco_dim,
             x_dim=env_ctx.num_node_dim,
             e_dim=env_ctx.num_edge_dim,
             g_dim=env_ctx.num_cond_dim,
-            num_emb=cfg.model.num_emb,
+            num_emb=num_emb,
             num_layers=cfg.model.num_layers,
             num_heads=cfg.model.graph_transformer.num_heads,
             ln_type=cfg.model.graph_transformer.ln_type,
         )
 
         self.logZ = graph_transformer.mlp(
-            env_ctx.num_cond_dim + cfg.pharmacophore_dim, num_emb * 2, 1, 2
+            env_ctx.num_cond_dim + cfg.model.pharmaco_cond.pharmaco_dim,
+            num_emb * 2,
+            1,
+            2,
         )
 
     def forward(self, g, cond):
-        node_embeddings, graph_embeddings = self.transf(g, cond)
-        mol_g = g["compound"]
+        mol_g = hetero_batch_to_batch(g, "compound")
+        pharmaco_g = hetero_batch_to_batch(g, "pharmacophore")
+
+        node_embeddings, graph_embeddings = self.transf(mol_g, pharmaco_g, cond)
         return self._forward_after_transf(mol_g, node_embeddings, graph_embeddings)
+
+    def compute_logZ(self, cond_info, pharmaco_data):
+        pharmacophore_embedding = self.transf.encode_pharmacophore(pharmaco_data)
+        cond_cat = torch.cat([cond_info, pharmacophore_embedding], dim=-1)
+        return self.logZ(cond_cat)

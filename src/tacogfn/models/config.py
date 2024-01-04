@@ -15,6 +15,11 @@ class GraphTransformerConfig:
 
 
 @dataclass
+class PharmacoConditioningConfig(GraphTransformerConfig):
+    pharmaco_dim: int = 64
+
+
+@dataclass
 class ModelConfig:
     """Generic configuration for models
 
@@ -30,3 +35,4 @@ class ModelConfig:
     num_emb: int = 128
     dropout: float = 0
     graph_transformer: GraphTransformerConfig = GraphTransformerConfig()
+    pharmaco_cond: PharmacoConditioningConfig = PharmacoConditioningConfig()
