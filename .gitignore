@@ -5,6 +5,7 @@ src/logs
 docking_temp/
 misc/*
 model_weights/*
+logs/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

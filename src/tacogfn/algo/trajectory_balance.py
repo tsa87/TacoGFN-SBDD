@@ -1,5 +1,5 @@
 """
-Trajectory balance code from: 
+Trajectory balance code modified from: 
 https://github.com/recursionpharma/gflownet
 """
 
@@ -918,7 +918,6 @@ class PharmacophoreTrajectoryBalance(TrajectoryBalance):
         # policy P_F, optionally a backward policy P_B, and per-graph outputs (e.g. F(s) in SubTB).
         molecule_data_list = batch.to_data_list()
         pharmacophore_repeated_list = [pharmacophore_list[i] for i in batch_idx]
-        assert len(pharmacophore_repeated_list) == len(molecule_data_list)
         batch_with_pharmacophore = merge_pharmacophore_and_molecule_data_list(
             pharmacophore_repeated_list, molecule_data_list
         ).to(dev)

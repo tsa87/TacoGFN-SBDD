@@ -32,6 +32,8 @@ def _rbf(D, D_min=0.0, D_max=20.0, D_count=16, device="cpu"):
 def merge_pharmacophore_and_molecule_data_list(
     pharmacophore_data_list, molecule_data_list
 ):
+    assert len(pharmacophore_data_list) == len(molecule_data_list)
+    
     merged_data_list = []
 
     for pharmacophore_data, molecule_data in zip(

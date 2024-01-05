@@ -1,5 +1,5 @@
 """
-Graph sampling code from: 
+Graph sampling code modified from: 
 https://github.com/recursionpharma/gflownet
 """
 

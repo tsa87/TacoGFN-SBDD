@@ -7,7 +7,6 @@ from typing import Callable, Dict, List, Tuple, Union
 import numpy as np
 import torch
 import torch_geometric.data as gd
-from gflownet.models import bengio2021flow
 from rdkit.Chem.rdchem import Mol as RDMol
 from torch import Tensor, nn
 from torch.utils.data import DataLoader, Dataset
@@ -18,7 +17,7 @@ from src.tacogfn.data.pharmacophore import PharmacoDB, PharmacophoreGraphDataset
 from src.tacogfn.data.sampling_iterator import PharmacoCondSamplingIterator
 from src.tacogfn.envs import frag_mol_env
 from src.tacogfn.eval.models.baseline import BaseAffinityPrediction
-from src.tacogfn.models import pharmaco_cond_graph_transformer
+from src.tacogfn.models import bengio2021flow, pharmaco_cond_graph_transformer
 from src.tacogfn.online_trainer import StandardOnlineTrainer
 from src.tacogfn.trainer import FlatRewards, GFNTask, RewardScalar
 from src.tacogfn.utils.conditioning import TemperatureConditional
@@ -53,7 +52,8 @@ class PharmacophoreTask(GFNTask):
 
     def _load_task_models(self):
         # TODO: change this to affinity model KAIST is developing
-        model = BaseAffinityPrediction(64, 71, 4)
+        model = BaseAffinityPrediction(
+            self.cfg.model.pharmaco_cond.pharmaco_dim, 71, 4)
         model, self.device = self._wrap_model(model, send_to_device=True)
         return {"affinity": model}
 
@@ -90,7 +90,7 @@ class PharmacophoreTask(GFNTask):
         if not is_valid.any():
             return FlatRewards(torch.zeros((0, 1))), is_valid
 
-        mol_batch = [g for i, g in enumerate(graphs) if is_valid[i]]
+        mol_datalist = [g for i, g in enumerate(graphs) if is_valid[i]]
         pharmacophore_batch = [
             p
             for i, p in enumerate(
@@ -101,7 +101,7 @@ class PharmacophoreTask(GFNTask):
             if is_valid[i]
         ]
 
-        mol_batch = gd.Batch.from_data_list(mol_batch)
+        mol_batch = gd.Batch.from_data_list(mol_datalist)
         pharmacophore_batch = gd.Batch.from_data_list(pharmacophore_batch)
 
         preds = self.models["affinity"](mol_batch, pharmacophore_batch)
@@ -279,23 +279,22 @@ class PharmacophoreTrainer(StandardOnlineTrainer):
         train_ids = [tuple_to_pharmaco_id(t) for t in split_file['train']]
         test_ids = [tuple_to_pharmaco_id(t) for t in split_file['test']]
                 
-        self.pharmaco_db = PharmacoDB(self.cfg.pharmacophore_db_path, {
+        return PharmacoDB(self.cfg.pharmacophore_db_path, {
             'train': train_ids,
             'test': test_ids
         }, rng=np.random.default_rng(142857), verbose=True)
     
     
     def setup(self):
-        self.setup_pharamaco_dataset()
+        self.pharmaco_db = self.setup_pharamaco_dataset()
         super().setup()    
-    
     
 def main():
     """Example of how this model can be run."""
     hps = {
         "log_dir": "./logs/debug_run_pharmaco_frag_pb",
-        "split_file": '../dataset/split_by_name.pt',
-        "pharmacophore_db_path": "../misc/pharmacophores.lmdb",
+        "split_file": 'dataset/split_by_name.pt',
+        "pharmacophore_db_path": "misc/pharmacophores.lmdb",
         "device": "cuda" if torch.cuda.is_available() else "cpu",
         "overwrite_existing_exp": True,
         "num_training_steps": 10_000,
