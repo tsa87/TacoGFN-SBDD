@@ -1,5 +1,5 @@
 """
-Trajectory balance code from: 
+Trajectory balance code modified from: 
 https://github.com/recursionpharma/gflownet
 """
 
@@ -13,10 +13,12 @@ import torch_geometric.data as gd
 from torch import Tensor
 from torch_scatter import scatter, scatter_sum
 
-from tacogfn.algo.config import TBVariant
-from tacogfn.algo.graph_sampling import GraphSampler
-from tacogfn.config import Config
-from tacogfn.envs.graph_building_env import (
+from src.tacogfn.algo.config import TBVariant
+from src.tacogfn.algo.graph_sampling import GraphSampler, PharmacoCondGraphSampler
+from src.tacogfn.config import Config
+from src.tacogfn.data.pharmacophore import PharmacoDB
+from src.tacogfn.data.utils import merge_pharmacophore_and_molecule_data_list
+from src.tacogfn.envs.graph_building_env import (
     Graph,
     GraphAction,
     GraphActionCategorical,
@@ -25,7 +27,7 @@ from tacogfn.envs.graph_building_env import (
     GraphBuildingEnvContext,
     generate_forward_trajectory,
 )
-from tacogfn.trainer import GFNAlgorithm
+from src.tacogfn.trainer import GFNAlgorithm
 
 
 def shift_right(x: torch.Tensor, z=0):
@@ -733,3 +735,388 @@ class TrajectoryBalance(GFNAlgorithm):
             p = pdiff[s_idx:e_idx]
             total_loss[ep] = subTB(fr, p).pow(2).sum() / (n * n + n) * 2
         return total_loss
+
+
+class PharmacophoreTrajectoryBalance(TrajectoryBalance):
+    def __init__(
+        self,
+        env: GraphBuildingEnv,
+        ctx: GraphBuildingEnvContext,
+        pharmaco_dataset: PharmacoDB,
+        rng: np.random.RandomState,
+        cfg: Config,
+    ):
+        super().__init__(env, ctx, rng, cfg)
+
+        self.pharmaco_dataset = pharmaco_dataset
+        self.graph_sampler = PharmacoCondGraphSampler(
+            ctx,
+            env,
+            pharmaco_dataset,
+            cfg.algo.max_len,
+            cfg.algo.max_nodes,
+            rng,
+            self.sample_temp,
+            correct_idempotent=self.cfg.do_correct_idempotent,
+            pad_with_terminal_state=self.cfg.do_parameterize_p_b,
+        )
+
+    def create_training_data_from_own_samples(
+        self,
+        model: TrajectoryBalanceModel,
+        n: int,
+        cond_info: dict[str, Tensor],
+        random_action_prob: float,
+    ):
+        """Generate trajectories by sampling a model
+
+        Parameters
+        ----------
+        model: TrajectoryBalanceModel
+           The model being sampled
+        n: int
+            Number of trajectories to sample
+        cond_info: dict[str, torch.tensor]
+            Conditional information dictionary
+                - pharmacophore shape (N, 1)
+                - encoding shape (N, n_info)
+        random_action_prob: float
+            Probability of taking a random action
+        Returns
+        -------
+        data: List[Dict]
+           A list of trajectories. Each trajectory is a dict with keys
+           - trajs: List[Tuple[Graph, GraphAction]]
+           - reward_pred: float, -100 if an illegal action is taken, predicted R(x) if bootstrapping, None otherwise
+           - fwd_logprob: log Z + sum logprobs P_F
+           - bck_logprob: sum logprobs P_B
+           - logZ: predicted log Z
+           - loss: predicted loss (if bootstrapping)
+           - is_valid: is the generated graph valid according to the env & ctx
+        """
+        dev = self.ctx.device
+        cond_info["encoding"] = cond_info["encoding"].to(dev)
+
+        data = self.graph_sampler.sample_from_model(
+            model, n, cond_info, dev, random_action_prob
+        )
+
+        # Use pharmacophore to compute logZ
+        pharmaco_batch = gd.Batch.from_data_list(
+            self.pharmaco_dataset.get_pharmacophore_datalist_from_idxs(
+                cond_info["pharmacophore"]
+            )
+        ).to(dev)
+        logZ_pred = model.compute_logZ(
+            cond_info["encoding"],
+            pharmaco_batch,
+        )
+
+        for i in range(n):
+            data[i]["logZ"] = logZ_pred[i].item()
+        return data
+
+    def create_training_data_from_graphs(
+        self,
+        graphs,
+        model: Optional[TrajectoryBalanceModel] = None,
+        cond_info: Optional[dict[str, Tensor]] = None,
+        random_action_prob: Optional[float] = None,
+    ):
+        """Generate trajectories from known endpoints
+
+        Parameters
+        ----------
+        graphs: List[Graph]
+            List of Graph endpoints
+        model: TrajectoryBalanceModel
+           The model being sampled
+        cond_info: dict[str, torch.tensor]
+            Conditional information dictionary
+                - pharmacophore shape (N, 1)
+                - encoding shape (N, n_info)
+        random_action_prob: float
+            Probability of taking a random action
+
+        Returns
+        -------
+        trajs: List[Dict{'traj': List[tuple[Graph, GraphAction]]}]
+           A list of trajectories.
+        """
+        if self.cfg.do_sample_p_b:
+            assert (
+                model is not None
+                and cond_info is not None
+                and random_action_prob is not None
+            )
+            dev = self.ctx.device
+            cond_info["encoding"] = cond_info["encoding"].to(dev)  # Changed line
+            return self.graph_sampler.sample_backward_from_graphs(
+                graphs,
+                model if self.cfg.do_parameterize_p_b else None,
+                cond_info,
+                dev,
+                random_action_prob,
+            )
+        trajs = [{"traj": generate_forward_trajectory(i)} for i in graphs]
+        for traj in trajs:
+            n_back = [
+                self.env.count_backward_transitions(
+                    gp, check_idempotent=self.cfg.do_correct_idempotent
+                )
+                for gp, _ in traj["traj"][1:]
+            ] + [1]
+            traj["bck_logprobs"] = (
+                (1 / torch.tensor(n_back).float()).log().to(self.ctx.device)
+            )
+            traj["result"] = traj["traj"][-1][0]
+        return trajs
+
+    def compute_batch_losses(
+        self, model: TrajectoryBalanceModel, batch: gd.Batch, num_bootstrap: int = 0  # type: ignore[override]
+    ):
+        """Compute the losses over trajectories contained in the batch
+
+        Parameters
+        ----------
+        model: TrajectoryBalanceModel
+           A GNN taking in a batch of graphs as input as per constructed by `self.construct_batch`.
+           Must have a `logZ` attribute, itself a model, which predicts log of Z(cond_info)
+        batch: gd.Batch
+          batch of graphs inputs as per constructed by `self.construct_batch`
+        num_bootstrap: int
+          the number of trajectories for which the reward loss is computed. Ignored if 0.
+        """
+        # Get pharmacophore batch
+        pharmacophore_list = self.pharmaco_dataset.get_pharmacophore_datalist_from_idxs(
+            batch.pharmacophore
+        )
+
+        dev = batch.x.device
+        # A single trajectory is comprised of many graphs
+        num_trajs = int(batch.traj_lens.shape[0])
+        log_rewards = batch.log_rewards
+        # Clip rewards
+        assert log_rewards.ndim == 1
+        clip_log_R = torch.maximum(
+            log_rewards,
+            torch.tensor(self.global_cfg.algo.illegal_action_logreward, device=dev),
+        ).float()
+        cond_info = batch.cond_info
+        invalid_mask = 1 - batch.is_valid
+
+        # This index says which trajectory each graph belongs to, so
+        # it will look like [0,0,0,0,1,1,1,2,...] if trajectory 0 is
+        # of length 4, trajectory 1 of length 3, and so on.
+        batch_idx = torch.arange(num_trajs, device=dev).repeat_interleave(
+            batch.traj_lens
+        )
+        # The position of the last graph of each trajectory
+        final_graph_idx = torch.cumsum(batch.traj_lens, 0) - 1
+
+        # Forward pass of the model, returns a GraphActionCategorical representing the forward
+        # policy P_F, optionally a backward policy P_B, and per-graph outputs (e.g. F(s) in SubTB).
+        molecule_data_list = batch.to_data_list()
+        pharmacophore_repeated_list = [pharmacophore_list[i] for i in batch_idx]
+        batch_with_pharmacophore = merge_pharmacophore_and_molecule_data_list(
+            pharmacophore_repeated_list, molecule_data_list
+        ).to(dev)
+        if self.cfg.do_parameterize_p_b:
+            fwd_cat, bck_cat, per_graph_out = model(
+                batch_with_pharmacophore, cond_info[batch_idx]
+            )
+        else:
+            if self.model_is_autoregressive:
+                fwd_cat, per_graph_out = model(
+                    batch_with_pharmacophore, cond_info, batched=True
+                )
+            else:
+                fwd_cat, per_graph_out = model(
+                    batch_with_pharmacophore, cond_info[batch_idx]
+                )
+        # Retreive the reward predictions for the full graphs,
+        # i.e. the final graph of each trajectory
+        log_reward_preds = per_graph_out[final_graph_idx, 0]
+        # Compute trajectory balance objective
+        pharmaco_batch = gd.Batch.from_data_list(pharmacophore_list).to(dev)
+        log_Z = model.compute_logZ(
+            cond_info,
+            pharmaco_batch,
+        )[:, 0]
+        # Compute the log prob of each action in the trajectory
+        if self.cfg.do_correct_idempotent:
+            # If we want to correct for idempotent actions, we need to sum probabilities
+            # i.e. to compute P(s' | s) = sum_{a that lead to s'} P(a|s)
+            # here we compute the indices of the graph that each action corresponds to, ip_lens
+            # contains the number of idempotent actions for each transition, so we
+            # repeat_interleave as with batch_idx
+            ip_batch_idces = torch.arange(
+                batch.ip_lens.shape[0], device=dev
+            ).repeat_interleave(batch.ip_lens)
+            # Indicate that the `batch` corresponding to each action is the above
+            ip_log_prob = fwd_cat.log_prob(batch.ip_actions, batch=ip_batch_idces)
+            # take the logsumexp (because we want to sum probabilities, not log probabilities)
+            # TODO: numerically stable version:
+            p = scatter(
+                ip_log_prob.exp(),
+                ip_batch_idces,
+                dim=0,
+                dim_size=batch_idx.shape[0],
+                reduce="sum",
+            )
+            # As a (reasonable) band-aid, ignore p < 1e-30, this will prevent underflows due to
+            # scatter(small number) = 0 on CUDA
+            log_p_F = p.clamp(1e-30).log()
+
+            if self.cfg.do_parameterize_p_b:
+                # Now we repeat this but for the backward policy
+                bck_ip_batch_idces = torch.arange(
+                    batch.bck_ip_lens.shape[0], device=dev
+                ).repeat_interleave(batch.bck_ip_lens)
+                bck_ip_log_prob = bck_cat.log_prob(
+                    batch.bck_ip_actions, batch=bck_ip_batch_idces
+                )
+                bck_p = scatter(
+                    bck_ip_log_prob.exp(),
+                    bck_ip_batch_idces,
+                    dim=0,
+                    dim_size=batch_idx.shape[0],
+                    reduce="sum",
+                )
+                log_p_B = bck_p.clamp(1e-30).log()
+        else:
+            # Else just naively take the logprob of the actions we took
+            log_p_F = fwd_cat.log_prob(batch.actions)
+            if self.cfg.do_parameterize_p_b:
+                log_p_B = bck_cat.log_prob(batch.bck_actions)
+
+        if self.cfg.do_parameterize_p_b:
+            # If we're modeling P_B then trajectories are padded with a virtual terminal state sF,
+            # zero-out the logP_F of those states
+            log_p_F[final_graph_idx] = 0
+            if self.cfg.variant == TBVariant.SubTB1 or self.cfg.variant == TBVariant.DB:
+                # Force the pad states' F(s) prediction to be R
+                per_graph_out[final_graph_idx, 0] = clip_log_R
+
+            # To get the correct P_B we need to shift all predictions by 1 state, and ignore the
+            # first P_B prediction of every trajectory.
+            # Our batch looks like this:
+            # [(s1, a1), (s2, a2), ..., (st, at), (sF, None),   (s1, a1), ...]
+            #                                                   ^ new trajectory begins
+            # For the P_B of s1, we need the output of the model at s2.
+
+            # We also have access to the is_sink attribute, which tells us when P_B must = 1, which
+            # we'll use to ignore the last padding state(s) of each trajectory. This by the same
+            # occasion masks out the first P_B of the "next" trajectory that we've shifted.
+            log_p_B = torch.roll(log_p_B, -1, 0) * (1 - batch.is_sink)
+        else:
+            log_p_B = batch.log_p_B
+        assert log_p_F.shape == log_p_B.shape
+
+        # This is the log probability of each trajectory
+        traj_log_p_F = scatter(
+            log_p_F, batch_idx, dim=0, dim_size=num_trajs, reduce="sum"
+        )
+        traj_log_p_B = scatter(
+            log_p_B, batch_idx, dim=0, dim_size=num_trajs, reduce="sum"
+        )
+
+        if self.cfg.variant == TBVariant.SubTB1:
+            # SubTB interprets the per_graph_out predictions to predict the state flow F(s)
+            if self.cfg.cum_subtb:
+                traj_losses = self.subtb_cum(
+                    log_p_F, log_p_B, per_graph_out[:, 0], clip_log_R, batch.traj_lens
+                )
+            else:
+                traj_losses = self.subtb_loss_fast(
+                    log_p_F, log_p_B, per_graph_out[:, 0], clip_log_R, batch.traj_lens
+                )
+
+            # The position of the first graph of each trajectory
+            first_graph_idx = torch.zeros_like(batch.traj_lens)
+            torch.cumsum(batch.traj_lens[:-1], 0, out=first_graph_idx[1:])
+            log_Z = per_graph_out[first_graph_idx, 0]
+        elif self.cfg.variant == TBVariant.DB:
+            F_sn = per_graph_out[:, 0]
+            F_sm = per_graph_out[:, 0].roll(-1)
+            F_sm[final_graph_idx] = clip_log_R
+            transition_losses = (F_sn + log_p_F - F_sm - log_p_B).pow(2)
+            traj_losses = scatter(
+                transition_losses, batch_idx, dim=0, dim_size=num_trajs, reduce="sum"
+            )
+            first_graph_idx = torch.zeros_like(batch.traj_lens)
+            torch.cumsum(batch.traj_lens[:-1], 0, out=first_graph_idx[1:])
+            log_Z = per_graph_out[first_graph_idx, 0]
+        else:
+            # Compute log numerator and denominator of the TB objective
+            numerator = log_Z + traj_log_p_F
+            denominator = clip_log_R + traj_log_p_B
+
+            if self.mask_invalid_rewards:
+                # Instead of being rude to the model and giving a
+                # logreward of -100 what if we say, whatever you think the
+                # logprobablity of this trajetcory is it should be smaller
+                # (thus the `numerator - 1`). Why 1? Intuition?
+                denominator = denominator * (1 - invalid_mask) + invalid_mask * (
+                    numerator.detach() - 1
+                )
+
+            if self.cfg.epsilon is not None:
+                # Numerical stability epsilon
+                epsilon = torch.tensor([self.cfg.epsilon], device=dev).float()
+                numerator = torch.logaddexp(numerator, epsilon)
+                denominator = torch.logaddexp(denominator, epsilon)
+            if self.tb_loss_is_mae:
+                traj_losses = abs(numerator - denominator)
+            elif self.tb_loss_is_huber:
+                pass  # TODO
+            else:
+                traj_losses = (numerator - denominator).pow(2)
+
+        # Normalize losses by trajectory length
+        if self.length_normalize_losses:
+            traj_losses = traj_losses / batch.traj_lens
+        if self.reward_normalize_losses:
+            # multiply each loss by how important it is, using R as the importance factor
+            # factor = Rp.exp() / Rp.exp().sum()
+            factor = -clip_log_R.min() + clip_log_R + 1
+            factor = factor / factor.sum()
+            assert factor.shape == traj_losses.shape
+            # * num_trajs because we're doing a convex combination, and a .mean() later, which would
+            # undercount (by 2N) the contribution of each loss
+            traj_losses = factor * traj_losses * num_trajs
+
+        if self.cfg.bootstrap_own_reward:
+            num_bootstrap = num_bootstrap or len(log_rewards)
+            if self.reward_loss_is_mae:
+                reward_losses = abs(
+                    log_rewards[:num_bootstrap] - log_reward_preds[:num_bootstrap]
+                )
+            else:
+                reward_losses = (
+                    log_rewards[:num_bootstrap] - log_reward_preds[:num_bootstrap]
+                ).pow(2)
+            reward_loss = reward_losses.mean() * self.cfg.reward_loss_multiplier
+        else:
+            reward_loss = 0
+
+        loss = traj_losses.mean() + reward_loss
+        info = {
+            "offline_loss": traj_losses[: batch.num_offline].mean()
+            if batch.num_offline > 0
+            else 0,
+            "online_loss": traj_losses[batch.num_offline :].mean()
+            if batch.num_online > 0
+            else 0,
+            "reward_loss": reward_loss,
+            "invalid_trajectories": invalid_mask.sum() / batch.num_online
+            if batch.num_online > 0
+            else 0,
+            "invalid_logprob": (invalid_mask * traj_log_p_F).sum()
+            / (invalid_mask.sum() + 1e-4),
+            "invalid_losses": (invalid_mask * traj_losses).sum()
+            / (invalid_mask.sum() + 1e-4),
+            "logZ": log_Z.mean(),
+            "loss": loss.item(),
+        }
+        return loss, info

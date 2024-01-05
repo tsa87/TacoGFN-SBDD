@@ -8,7 +8,7 @@ from pathlib import Path
 import torch
 import torch.nn as nn
 
-from tacogfn.utils.metrics import get_limits_of_hypercube
+from src.tacogfn.utils.metrics import get_limits_of_hypercube
 
 
 class FocusModel:

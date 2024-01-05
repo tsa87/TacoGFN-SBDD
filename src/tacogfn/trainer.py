@@ -18,15 +18,15 @@ from rdkit.Chem.rdchem import Mol as RDMol
 from torch import Tensor
 from torch.utils.data import DataLoader, Dataset
 
-from tacogfn.data.replay_buffer import ReplayBuffer
-from tacogfn.data.sampling_iterator import SamplingIterator
-from tacogfn.envs.graph_building_env import (
+from src.tacogfn.data.replay_buffer import ReplayBuffer
+from src.tacogfn.data.sampling_iterator import SamplingIterator
+from src.tacogfn.envs.graph_building_env import (
     GraphActionCategorical,
     GraphBuildingEnv,
     GraphBuildingEnvContext,
 )
-from tacogfn.utils.misc import create_logger
-from tacogfn.utils.multiprocessing_proxy import mp_object_wrapper
+from src.tacogfn.utils.misc import create_logger
+from src.tacogfn.utils.multiprocessing_proxy import mp_object_wrapper
 
 from .config import Config
 
