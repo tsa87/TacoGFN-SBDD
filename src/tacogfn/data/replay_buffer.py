@@ -8,7 +8,7 @@ from typing import List
 import numpy as np
 import torch
 
-from tacogfn.config import Config
+from src.tacogfn.config import Config
 
 
 class ReplayBuffer(object):

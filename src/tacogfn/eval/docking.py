@@ -1,9 +1,10 @@
 import os
+import shutil
 import subprocess
 import tempfile
 from typing import Optional
 
-from tacogfn.utils import molecules
+from src.tacogfn.utils import molecules
 
 PREPARE_LIGAND_STUB = "mk_prepare_ligand.py"
 PREPARE_RECEPTOR_STUB = "prepare_receptor"
