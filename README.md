@@ -20,8 +20,7 @@ TODO: add instructions; move all protein.pdb, ligand.pdb into folder
 
 4. Install MolVoxel
 ```bash
-cd src/molvoxel
-pip install -e .
+pip install molvoxel
 ```
 
 4. Install ADFR for Docking
