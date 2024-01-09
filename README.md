@@ -9,8 +9,9 @@ sudo apt-get install libxau6
 conda env create -f environment.yml
 ```
 
-2. Download and unzip PDBBind dataset
+2. Download and unzip CrossDock Dataset
 TODO: add instructions; move all protein.pdb, ligand.pdb into folder
+TODO: add instructions on getting docking score from type files 
 ```bash 
 ```
 

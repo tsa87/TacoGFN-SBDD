@@ -2,8 +2,6 @@ import numpy as np
 from Bio.PDB import PDBParser
 from openbabel import pybel
 from rdkit import Chem
-from rdkit.Chem import AllChem
-from scipy.spatial import distance_matrix
 
 
 def convert_pdb_to_sdf(pdb_file: str, sdf_file: str) -> None:
@@ -13,6 +11,15 @@ def convert_pdb_to_sdf(pdb_file: str, sdf_file: str) -> None:
 
     # Write the molecule to an SDF file
     mol.write("sdf", sdf_file, overwrite=True)
+
+
+def sdf_to_single_smiles(sdf_file: str) -> str:
+    suppl = Chem.SDMolSupplier(sdf_file)
+
+    for mol in suppl:
+        if mol is not None:
+            smiles = Chem.MolToSmiles(mol, isomericSmiles=False)
+            return smiles
 
 
 def add_implicit_hydrogens_to_sdf(
