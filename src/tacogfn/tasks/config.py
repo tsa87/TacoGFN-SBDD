@@ -13,6 +13,21 @@ class SEHTaskConfig:
 
 
 @dataclass
+class PharmacoFragTaskConfig:
+    """Config for the PharmacoFragTask
+
+    Attributes
+    ----------
+    fragment_type : str
+        The type of fragment to use
+    """
+
+    fragment_type: str = "gflownet"  # or zinc250k_50cutoff_brics
+    affinity_predictor: str = "beta"  # or "alpha"
+    min_docking_score: float = -5.0  # at least this good to get a reward
+
+
+@dataclass
 class SEHMOOTaskConfig:
     """Config for the SEHMOOTask
 
@@ -60,3 +75,4 @@ class SEHMOOTaskConfig:
 class TasksConfig:
     seh: SEHTaskConfig = SEHTaskConfig()
     seh_moo: SEHMOOTaskConfig = SEHMOOTaskConfig()
+    pharmaco_frag: PharmacoFragTaskConfig = PharmacoFragTaskConfig()

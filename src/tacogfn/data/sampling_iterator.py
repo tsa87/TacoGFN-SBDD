@@ -592,7 +592,7 @@ class PharmacoCondSamplingIterator(SamplingIterator):
                         self.ctx.graph_to_mol(trajs[i]["result"]) for i in valid_idcs
                     ]
                     # ask the task to compute their reward
-                    online_flat_rew, m_is_valid = self.task.compute_flat_rewards(
+                    online_flat_rew, m_is_valid, eval_dict = self.task.compute_flat_rewards(
                         mols,
                         cond_info["pharmacophore"][valid_idcs],
                     )
@@ -712,6 +712,7 @@ class PharmacoCondSamplingIterator(SamplingIterator):
             batch.focus_dir = cond_info.get("focus_dir", None)
             batch.pharmacophore = cond_info["pharmacophore"]
             batch.extra_info = extra_info
+            batch.eval_dict = eval_dict
             # TODO: we could very well just pass the cond_info dict to construct_batch above,
             # and the algo can decide what it wants to put in the batch object
 
