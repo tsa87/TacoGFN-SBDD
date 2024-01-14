@@ -7,7 +7,7 @@ from src.tacogfn.tasks.seh_frag import SOME_MOLS
 
 
 def get_example_pharmacophore_datalist():
-    db = PharmacoDB("../misc/pharmacophores.lmdb")
+    db = PharmacoDB("../misc/pharmacophores_db.lmdb")
 
     ids = [
         "1a0q",
