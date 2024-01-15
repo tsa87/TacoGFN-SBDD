@@ -10,7 +10,7 @@ sys.path.append('..')
 from src.scoring.scoring_module import AffinityPredictor
 
 
-HEAD_PATH = "./model_weights/base_head.pth"
+HEAD_PATH = "./model_weights/base_100_per_pocket.pth"
 
 
 class Scoring_ArgParser(argparse.ArgumentParser):
