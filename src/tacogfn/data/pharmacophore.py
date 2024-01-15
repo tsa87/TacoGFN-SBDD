@@ -10,118 +10,11 @@ import torch_geometric
 from torch.utils import data
 from tqdm import tqdm
 
-from src.pharmaconet.src import PharmacophoreModel
-from src.pharmaconet.src.scoring import pharmacophore_model
+from src.pharmaconet import PharmacophoreModel
+from src.pharmaconet.scoring import pharmacophore_model
 from src.tacogfn.data import pharmacophore
 from src.tacogfn.data.utils import _normalize, _rbf
 from src.tacogfn.utils import transforms
-
-
-class PharmacoDB:
-    def __init__(
-        self,
-        db_path: str,
-        id_partition: dict[str, list[str]] = None,
-        rng: np.random.Generator = None,
-        verbose: bool = False,
-    ):
-        self.db_path = db_path
-        self.verbose = verbose
-
-        self.env = lmdb.open(
-            self.db_path,
-            create=True,
-            map_size=int(1e11),
-            lock=False,
-            readahead=False,
-            meminit=False,
-        )
-
-        self.all_id = self.get_keys()
-        self.id_to_idx = {id: i for i, id in enumerate(self.all_id)}
-        self.idx_to_id = {i: id for i, id in enumerate(self.all_id)}
-
-        self.rng = rng
-        self.id_partition = {}
-        if id_partition is not None:
-            for key, ids in id_partition.items():
-                self.id_partition[key] = list(set(self.all_id) & set(ids))
-
-        if self.verbose:
-            for key, ids in self.id_partition.items():
-                print(f"loaded {len(ids)} ids for {key}")
-
-    def add_pharmacophores(self, paths: list[str], keys: list[str]):
-        """Take a list of pharmacophore paths and keys and add them to the database."""
-        env = lmdb.open(self.db_path, create=False, map_size=int(1e11))
-
-        with env.begin(write=True) as txn:
-            for path, key in tqdm(zip(paths, keys)):
-                if not os.path.exists(path):
-                    continue
-                with open(path, "rb") as f:
-                    txn.put(key.encode(), f.read())
-
-        env.close()
-
-    def get_pharmacophore(self, key: str) -> PharmacophoreModel:
-        """Get a pharmacophore from the database by key."""
-        with self.env.begin(write=False) as txn:
-            serialized_data = txn.get(key.encode())
-        if serialized_data is None:
-            return None
-
-        data = pickle.loads(serialized_data)
-        model = PharmacophoreModel()
-        model.__setstate__(data)
-        return model
-
-    def get_pharmacophore_from_idx(self, idx: int) -> PharmacophoreModel:
-        return self.get_pharmacophore(self.idx_to_id[idx])
-
-    def get_pharmacophore_datalist_from_idxs(
-        self, idxs: Union[list[int], torch.Tensor]
-    ) -> list[PharmacophoreModel]:
-        if isinstance(idxs, torch.Tensor):
-            idxs = idxs.tolist()
-        return pharmacophore.PharmacophoreGraphDataset(
-            [self.get_pharmacophore_from_idx(idx) for idx in idxs]
-        )
-
-    def sample_pharmacophore_idx(self, n: int, partition=None) -> list[int]:
-        if partition is None:
-            pharmacophore_ids = self.rng.choice(
-                self.all_id,
-                size=n,
-                replace=False,
-            )
-        else:
-            pharmacophore_ids = self.rng.choice(
-                self.id_partition[partition], size=n, replace=False
-            )
-        return [self.id_to_idx[id] for id in pharmacophore_ids]
-
-    def get_pharmacophore_list(self, keys: list[str]) -> list[PharmacophoreModel]:
-        return [self.get_pharmacophore(key) for key in keys]
-
-    def get_keys(self):
-        env = lmdb.open(self.db_path, create=False)
-        with env.begin(write=False) as txn:
-            keys = [key.decode() for key, _ in txn.cursor()]
-        env.close()
-        return keys
-
-    def _purge_none_data(self):
-        """Remove all pharmacophores that are None."""
-        counter = 0
-        env = lmdb.open(self.db_path, create=False)
-        with env.begin(write=True) as txn:
-            for key, value in tqdm(txn.cursor()):
-                if value is None:
-                    txn.delete(key)
-                    counter += 1
-        print(f"Removed {counter} pharmacophores.")
-        env.close()
 
 
 class PharmacophoreGraphDataset(data.Dataset):
@@ -238,6 +131,7 @@ class PharmacophoreGraphDataset(data.Dataset):
                 ],
                 dim=-1,
             )
+
             node_v = unit_vector_to_hotspot.unsqueeze(-2)
             edge_s = torch.cat(
                 [
@@ -257,3 +151,128 @@ class PharmacophoreGraphDataset(data.Dataset):
             edge_index=edge_index,
         )
         return data
+
+
+class PharmacoDB:
+    def __init__(
+        self,
+        db_path: str,
+        id_partition: dict[str, list[str]] = None,
+        rng: np.random.Generator = None,
+        verbose: bool = False,
+    ):
+        self.db_path = db_path
+        self.verbose = verbose
+
+        self.env = lmdb.open(
+            self.db_path,
+            create=True,
+            map_size=int(1e11),
+            lock=False,
+            readahead=False,
+            meminit=False,
+        )
+
+        self.all_id = self.get_keys()
+        self.id_to_idx = {id: i for i, id in enumerate(self.all_id)}
+        self.idx_to_id = {i: id for i, id in enumerate(self.all_id)}
+
+        self.rng = rng
+        self.id_partition = {}
+        if id_partition is not None:
+            for key, ids in id_partition.items():
+                self.id_partition[key] = list(set(self.all_id) & set(ids))
+
+        if self.verbose:
+            for key, ids in self.id_partition.items():
+                print(f"loaded {len(ids)} ids for {key}")
+
+    def add_pharmacophores(self, paths: list[str], keys: list[str]):
+        """Take a list of pharmacophore paths and keys and add them to the database."""
+        env = lmdb.open(self.db_path, create=False, map_size=int(1e11))
+
+        with env.begin(write=True) as txn:
+            for path, key in tqdm(zip(paths, keys)):
+                if not os.path.exists(path):
+                    continue
+                with open(path, "rb") as f:
+                    txn.put(key.encode(), f.read())
+
+        env.close()
+
+    def get_partition_keys(self, partition: str) -> list[str]:
+        return self.id_partition[partition]
+
+    def get_idxs_from_keys(self, keys: list[str]) -> list[int]:
+        return [self.id_to_idx[key] for key in keys]
+
+    def get_keys_from_idxs(self, idxs: list[int]) -> list[str]:
+        return [self.idx_to_id[idx] for idx in idxs]
+
+    def get_partition_idxs(self, partition: str) -> list[int]:
+        return self.get_idxs_from_keys(self.get_partition_keys(partition))
+
+    def get_pharmacophore(self, key: str) -> PharmacophoreModel:
+        """Get a pharmacophore from the database by key."""
+        with self.env.begin(write=False) as txn:
+            serialized_data = txn.get(key.encode())
+        if serialized_data is None:
+            return None
+
+        data = pickle.loads(serialized_data)
+        model = PharmacophoreModel()
+        model.__setstate__(data)
+        return model
+
+    def get_pharmacophore_from_idx(self, idx: int) -> PharmacophoreModel:
+        return self.get_pharmacophore(self.idx_to_id[idx])
+
+    def get_pharmacophore_datalist_from_idxs(
+        self, idxs: Union[list[int], torch.Tensor]
+    ) -> PharmacophoreGraphDataset:
+        if isinstance(idxs, torch.Tensor):
+            idxs = idxs.tolist()
+        return PharmacophoreGraphDataset(
+            [self.get_pharmacophore_from_idx(idx) for idx in idxs]
+        )
+
+    def get_pharmacophore_data_from_idx(self, idx: int) -> PharmacophoreGraphDataset:
+        return PharmacophoreGraphDataset([self.get_pharmacophore_from_idx(idx)])[0]
+
+    def get_pharmacophore_data_from_id(self, pdb_id: str) -> PharmacophoreGraphDataset:
+        return PharmacophoreGraphDataset([self.get_pharmacophore(pdb_id)])[0]
+
+    def sample_pharmacophore_idx(self, n: int, partition=None) -> list[int]:
+        if partition is None:
+            pharmacophore_ids = self.rng.choice(
+                self.all_id,
+                size=n,
+                replace=False,
+            )
+        else:
+            pharmacophore_ids = self.rng.choice(
+                self.id_partition[partition], size=n, replace=False
+            )
+        return [self.id_to_idx[pdb_id] for pdb_id in pharmacophore_ids]
+
+    def get_pharmacophore_list(self, keys: list[str]) -> list[PharmacophoreModel]:
+        return [self.get_pharmacophore(key) for key in keys]
+
+    def get_keys(self):
+        env = lmdb.open(self.db_path, create=False)
+        with env.begin(write=False) as txn:
+            keys = [key.decode() for key, _ in txn.cursor()]
+        env.close()
+        return keys
+
+    def _purge_none_data(self):
+        """Remove all pharmacophores that are None."""
+        counter = 0
+        env = lmdb.open(self.db_path, create=False)
+        with env.begin(write=True) as txn:
+            for key, value in tqdm(txn.cursor()):
+                if value is None:
+                    txn.delete(key)
+                    counter += 1
+        print(f"Removed {counter} pharmacophores.")
+        env.close()

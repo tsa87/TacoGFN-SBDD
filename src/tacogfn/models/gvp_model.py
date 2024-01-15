@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 
-from src.pharmaconet.src.scoring import pharmacophore_model
+from src.pharmaconet.scoring import pharmacophore_model
 from src.tacogfn.models.gvp import GVP, GVPConvLayer, LayerNorm, tuple_index
 
 NUM_INTERACTION_TYPES = len(pharmacophore_model.INTERACTION_TYPES)
