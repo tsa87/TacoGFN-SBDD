@@ -92,30 +92,6 @@ class PharmacophoreTask(GFNTask):
             self.temperature_conditional.transform(cond_info, flat_reward)
         )
 
-    def prepare_affinity_batch(
-        self,
-        smiles_list: list[str],
-        pharmacophore_list: list[PharmacophoreGraphDataset],
-    ):
-        if self.cfg.task.pharmaco_frag.affinity_predictor == "beta":
-            # Featurize ligands and batch
-            ligand_features = torch.tensor(self.molecule_featurizer(smiles_list))
-            data_loader = gl.DataLoader(
-                [
-                    {
-                        "pharmacophore": p,
-                        "ligand_features": l,
-                    }
-                    for p, l in zip(pharmacophore_list, ligand_features)
-                ],
-                batch_size=self.cfg.algo.global_batch_size,
-                shuffle=False,
-            )
-
-            return iter(data_loader)
-        else:
-            raise NotImplementedError()
-
     def predict_docking_score(
         self,
         mols: List[RDMol],
