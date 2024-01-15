@@ -26,6 +26,7 @@ from src.tacogfn.eval.models.baseline import BaseAffinityPrediction
 from src.tacogfn.models import bengio2021flow, pharmaco_cond_graph_transformer
 from src.tacogfn.online_trainer import StandardOnlineTrainer
 from src.tacogfn.trainer import FlatRewards, GFNTask, RewardScalar
+from src.tacogfn.utils import sascore
 from src.tacogfn.utils.conditioning import TemperatureConditional
 
 
@@ -56,7 +57,7 @@ class PharmacophoreTask(GFNTask):
         self.temperature_conditional = TemperatureConditional(cfg, rng)
         self.num_cond_dim = self.temperature_conditional.encoding_size()
 
-        self._load_task_models()
+        self.models = self._load_task_models()
 
     def _load_task_models(self):
         if self.cfg.task.pharmaco_frag.affinity_predictor == "alpha":
@@ -68,6 +69,26 @@ class PharmacophoreTask(GFNTask):
             )
 
             return {}
+
+        elif self.cfg.task.pharmaco_frag.affinity_predictor == "beta":
+            from molfeat.trans.pretrained import PretrainedDGLTransformer
+
+            from src.tacogfn.models.beta_docking_score_predictor import (
+                DockingScorePredictionModel,
+            )
+
+            self.molecule_featurizer = PretrainedDGLTransformer(
+                kind="gin_supervised_contextpred", dtype=float
+            )
+            model_state = torch.load(self.cfg.affinity_predictor_path)
+            model = DockingScorePredictionModel(
+                hidden_dim=model_state["hps"]["hidden_dim"]
+            )
+            model.load_state_dict(model_state["models_state_dict"][0])
+            model.eval()
+
+            model, self.device = self._wrap_model(model, send_to_device=True)
+            return {"affinity": model}
 
     def flat_reward_transform(self, y: Union[float, Tensor]) -> FlatRewards:
         return FlatRewards(torch.as_tensor(y))
@@ -91,6 +112,30 @@ class PharmacophoreTask(GFNTask):
         return RewardScalar(
             self.temperature_conditional.transform(cond_info, flat_reward)
         )
+
+    def prepare_beta_batch(
+        self,
+        smiles_list: list[str],
+        pharmacophore_list: list[PharmacophoreGraphDataset],
+    ):
+        if self.cfg.task.pharmaco_frag.affinity_predictor == "beta":
+            # Featurize ligands and batch
+            ligand_features = torch.tensor(self.molecule_featurizer(smiles_list))
+            data_loader = gl.DataLoader(
+                [
+                    {
+                        "pharmacophore": p,
+                        "ligand_features": l,
+                    }
+                    for p, l in zip(pharmacophore_list, ligand_features)
+                ],
+                batch_size=self.cfg.algo.global_batch_size,
+                shuffle=False,
+            )
+
+            return iter(data_loader)
+        else:
+            raise NotImplementedError()
 
     def predict_docking_score(
         self,
@@ -116,6 +161,21 @@ class PharmacophoreTask(GFNTask):
 
             return torch.as_tensor(preds)
 
+        elif self.cfg.task.pharmaco_frag.affinity_predictor == "beta":
+            pharmacophore_list = [
+                self.pharmacophore_dataset.get_pharmacophore_data_from_idx(p_id)
+                for i, p_id in enumerate(pharmacophore_ids.tolist())
+            ]
+
+            all_preds = []
+            for batch in self.prepare_beta_batch(smi_list, pharmacophore_list):
+                batch = {k: v.to(self.device) for k, v in batch.items()}
+                preds = self.models["affinity"](batch).reshape((-1,)).cpu().detach()
+                all_preds.append(preds)
+
+            preds = torch.cat(all_preds)
+            return preds
+
     def compute_flat_rewards(
         self,
         mols: List[RDMol],
@@ -133,12 +193,13 @@ class PharmacophoreTask(GFNTask):
         preds[preds.isnan()] = 0
         affinity_reward = (preds - self.cfg.task.pharmaco_frag.min_docking_score).clip(
             -10, 0
-        ) + preds * 0.2  # leaky reward
+        ) + preds * self.cfg.task.pharmaco_frag.leaky_coefficient  # leaky reward
         affinity_reward *= -1 / 10.0  # normalize reward to be in range [0, 1]
 
         qeds = torch.as_tensor([Descriptors.qed(mol) for mol in mols])
+        sas = torch.as_tensor([(10 - sascore.calculateScore(mol)) / 9 for mol in mols])
 
-        reward = affinity_reward * qeds
+        reward = affinity_reward * qeds * sas
         reward = self.flat_reward_transform(reward).clip(1e-4, 100).reshape((-1, 1))
         return (
             FlatRewards(reward),
@@ -146,6 +207,7 @@ class PharmacophoreTask(GFNTask):
             {
                 "docking_score": preds,
                 "qed": qeds,
+                "sa": sas,
             },
         )
 
@@ -354,9 +416,9 @@ class PharmacophoreTrainer(StandardOnlineTrainer):
 def main():
     """Example of how this model can be run."""
     hps = {
-        "log_dir": "./logs/2024_01_11_run_pharmaco_frag_alpha_qed_w_docking_score_cutoff",
+        "log_dir": "./logs/2024_01_14_run_pharmaco_frag_alpha_qed_w_docking_score_cutoff",
         "split_file": "dataset/split_by_name.pt",
-        "affinity_predictor_path": "model_weights/base_head.pth",
+        "affinity_predictor_path": "model_weights/base_100_per_pocket.pth",
         "pharmacophore_db_path": "misc/pharmacophores_db.lmdb",
         "device": "cuda" if torch.cuda.is_available() else "cpu",
         "overwrite_existing_exp": True,
@@ -377,6 +439,7 @@ def main():
                 "fragment_type": "zinc250k_50cutoff_brics",
                 "affinity_predictor": "alpha",
                 "min_docking_score": -5.0,
+                "leaky_coefficient": 0.2,
             },
         },
     }
