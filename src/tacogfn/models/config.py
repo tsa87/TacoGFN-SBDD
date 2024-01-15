@@ -15,7 +15,7 @@ class GraphTransformerConfig:
 
 
 @dataclass
-class PharmacoConditioningConfig(GraphTransformerConfig):
+class PharmacoConditioningConfig:
     pharmaco_dim: int = 64
 
 

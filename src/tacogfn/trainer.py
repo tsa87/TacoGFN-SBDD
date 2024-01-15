@@ -394,7 +394,7 @@ class GFNTrainer:
                 "cfg": self.cfg,
                 "step": it,
             },
-            open(pathlib.Path(self.cfg.log_dir) / "model_state.pt", "wb"),
+            open(pathlib.Path(self.cfg.log_dir) / f"model_state_{it}.pt", "wb"),
         )
 
     def log(self, info, index, key):
