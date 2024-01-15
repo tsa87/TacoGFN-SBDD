@@ -587,6 +587,7 @@ class TrajectoryBalance(GFNAlgorithm):
             reward_loss = 0
 
         loss = traj_losses.mean() + reward_loss
+
         info = {
             "offline_loss": traj_losses[: batch.num_offline].mean()
             if batch.num_offline > 0
@@ -605,6 +606,7 @@ class TrajectoryBalance(GFNAlgorithm):
             "logZ": log_Z.mean(),
             "loss": loss.item(),
         }
+
         return loss, info
 
     def _init_subtb(self, dev):
@@ -896,6 +898,7 @@ class PharmacophoreTrajectoryBalance(TrajectoryBalance):
         # A single trajectory is comprised of many graphs
         num_trajs = int(batch.traj_lens.shape[0])
         log_rewards = batch.log_rewards
+        flat_rewards = batch.flat_rewards
         # Clip rewards
         assert log_rewards.ndim == 1
         clip_log_R = torch.maximum(
@@ -1101,6 +1104,46 @@ class PharmacophoreTrajectoryBalance(TrajectoryBalance):
             reward_loss = 0
 
         loss = traj_losses.mean() + reward_loss
+
+        flat_rewards_info = {
+            **{
+                f"offline_reward_{i}": reward.item()
+                for i, reward in enumerate(
+                    flat_rewards[: batch.num_offline].mean(dim=0)
+                    if batch.num_offline > 0
+                    else []
+                )
+            },
+            **{
+                f"online_reward_{i}": reward.item()
+                for i, reward in enumerate(
+                    flat_rewards[batch.num_offline :].mean(dim=0)
+                    if batch.num_online > 0
+                    else []
+                )
+            },
+        }
+
+        eval_dict = batch.eval_dict
+        eval_info = {
+            **(
+                {
+                    f"offline_{i}": val[: batch.num_offline].mean(dim=0).item()
+                    for i, val in eval_dict.items()
+                }
+                if batch.num_offline > 0
+                else {}
+            ),
+            **(
+                {
+                    f"online_{i}": val[batch.num_offline :].mean(dim=0).item()
+                    for i, val in eval_dict.items()
+                }
+                if batch.num_online > 0
+                else {}
+            ),
+        }
+
         info = {
             "offline_loss": traj_losses[: batch.num_offline].mean()
             if batch.num_offline > 0
@@ -1119,4 +1162,7 @@ class PharmacophoreTrajectoryBalance(TrajectoryBalance):
             "logZ": log_Z.mean(),
             "loss": loss.item(),
         }
+
+        info = {**info, **flat_rewards_info, **eval_info}
+
         return loss, info
