@@ -102,6 +102,18 @@ def compute_docking_score_from_pdbqt(
     return best_affinity
 
 
+def default_compute_docking_score_from_smiles(
+    pdb_path: str,
+    smi: str,
+    center: tuple[float, float, float],
+) -> float:
+    return compute_docking_score_from_smiles(
+        pdb_path=pdb_path,
+        smi=smi,
+        center=center,
+    )
+
+
 def compute_docking_score_from_smiles(
     pdb_path: str,
     smi: str,
@@ -151,18 +163,20 @@ def compute_docking_score_from_sdf(
 
     temp_lig_sdf_path = os.path.join(temp_folder, "ligand.sdf")
     temp_lig_pdbqt_path = os.path.join(temp_folder, "ligand.pdbqt")
-    temp_pocket_pdbqt_path = os.path.join(temp_folder, "pocket.pdbqt")
-
     molecules.add_implicit_hydrogens_to_sdf(sdf_path, temp_lig_sdf_path)
-
     _prepare_ligand(
         input_ligand_sdf_path=temp_lig_sdf_path,
         output_ligand_pdbqt_path=temp_lig_pdbqt_path,
     )
-    _prepare_receptor(
-        input_receptor_pdb_path=pdb_path,
-        output_receptor_pdbqt_path=temp_pocket_pdbqt_path,
-    )
+
+    if pdb_path.endswith(".pdbqt"):
+        temp_pocket_pdbqt_path = pdb_path
+    else:
+        temp_pocket_pdbqt_path = os.path.join(temp_folder, "pocket.pdbqt")
+        _prepare_receptor(
+            input_receptor_pdb_path=pdb_path,
+            output_receptor_pdbqt_path=temp_pocket_pdbqt_path,
+        )
 
     if center is None:
         assert score_only or local_search

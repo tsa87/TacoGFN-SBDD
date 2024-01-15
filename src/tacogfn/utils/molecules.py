@@ -1,7 +1,7 @@
 import numpy as np
 from Bio.PDB import PDBParser
 from openbabel import pybel
-from rdkit import Chem
+from rdkit import Chem, DataStructs
 from rdkit.Chem import AllChem
 
 
@@ -255,3 +255,12 @@ def transform_sdf(
         writer = Chem.SDWriter(output_file)
         writer.write(mol)
         writer.close()
+
+
+def compute_diversity(mols):
+    diversity = []
+    fps = [Chem.RDKFingerprint(mol) for mol in mols]
+    for i in range(len(fps) - 1):
+        s = DataStructs.BulkTanimotoSimilarity(fps[i], fps[i + 1 :])
+        diversity.extend(s)
+    return diversity

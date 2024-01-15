@@ -241,9 +241,9 @@ class DockingScoreTrainer:
 def main():
     """Example of how this trainer can be run"""
     hps = {
-        "log_dir": "logs/debug_docking_score_prediction_beta_2",
+        "log_dir": "logs/docking_score_prediction_beta_full_dataset",
         "dataset_save_dir": "misc/crossdock_docking_score_dataset",
-        "pharmacodb_path": "misc/pharmacophores.lmdb",
+        "pharmacodb_path": "misc/pharmacophores_db.lmdb",
         "overwrite_existing_exp": True,
         "hidden_dim": 364,
     }
