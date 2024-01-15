@@ -206,6 +206,9 @@ class PharmacoDB:
     def get_idxs_from_keys(self, keys: list[str]) -> list[int]:
         return [self.id_to_idx[key] for key in keys]
 
+    def get_keys_from_idxs(self, idxs: list[int]) -> list[str]:
+        return [self.idx_to_id[idx] for idx in idxs]
+
     def get_partition_idxs(self, partition: str) -> list[int]:
         return self.get_idxs_from_keys(self.get_partition_keys(partition))
 
@@ -236,8 +239,8 @@ class PharmacoDB:
     def get_pharmacophore_data_from_idx(self, idx: int) -> PharmacophoreGraphDataset:
         return PharmacophoreGraphDataset([self.get_pharmacophore_from_idx(idx)])[0]
 
-    def get_pharmacophore_data_from_id(self, id: str) -> PharmacophoreGraphDataset:
-        return PharmacophoreGraphDataset([self.get_pharmacophore(id)])[0]
+    def get_pharmacophore_data_from_id(self, pdb_id: str) -> PharmacophoreGraphDataset:
+        return PharmacophoreGraphDataset([self.get_pharmacophore(pdb_id)])[0]
 
     def sample_pharmacophore_idx(self, n: int, partition=None) -> list[int]:
         if partition is None:
@@ -250,7 +253,7 @@ class PharmacoDB:
             pharmacophore_ids = self.rng.choice(
                 self.id_partition[partition], size=n, replace=False
             )
-        return [self.id_to_idx[id] for id in pharmacophore_ids]
+        return [self.id_to_idx[pdb_id] for pdb_id in pharmacophore_ids]
 
     def get_pharmacophore_list(self, keys: list[str]) -> list[PharmacophoreModel]:
         return [self.get_pharmacophore(key) for key in keys]

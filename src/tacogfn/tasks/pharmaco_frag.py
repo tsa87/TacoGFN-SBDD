@@ -50,36 +50,24 @@ class PharmacophoreTask(GFNTask):
         self._wrap_model = wrap_model
         self.rng = rng
         self.cfg = cfg
-        self.models = self._load_task_models()
         self.dataset = dataset
         self.pharmacophore_dataset = pharmacophore_dataset
 
         self.temperature_conditional = TemperatureConditional(cfg, rng)
         self.num_cond_dim = self.temperature_conditional.encoding_size()
 
+        self._load_task_models()
+
     def _load_task_models(self):
-        # TODO: change this to affinity model KAIST is developing
-        if self.cfg.task.pharmaco_frag.affinity_predictor == "beta":
-            from molfeat.trans.pretrained import PretrainedDGLTransformer
+        if self.cfg.task.pharmaco_frag.affinity_predictor == "alpha":
+            from src.scoring.scoring_module import AffinityPredictor
 
-            from src.tacogfn.models.beta_docking_score_predictor import (
-                DockingScorePredictionModel,
+            self.device = self.cfg.device
+            self.affinity_model = AffinityPredictor(
+                self.cfg.affinity_predictor_path, self.device
             )
 
-            self.molecule_featurizer = PretrainedDGLTransformer(
-                kind="gin_supervised_contextpred", dtype=float
-            )
-            model_state = torch.load(self.cfg.affinity_predictor_path)
-            model = DockingScorePredictionModel(
-                hidden_dim=model_state["hps"]["hidden_dim"]
-            )
-            model.load_state_dict(model_state["models_state_dict"][0])
-            model.eval()
-        else:
-            raise NotImplementedError()
-
-        model, self.device = self._wrap_model(model, send_to_device=True)
-        return {"affinity": model}
+            return {}
 
     def flat_reward_transform(self, y: Union[float, Tensor]) -> FlatRewards:
         return FlatRewards(torch.as_tensor(y))
@@ -134,19 +122,23 @@ class PharmacophoreTask(GFNTask):
         pharmacophore_ids: Tensor,
     ) -> Tensor:
         smi_list = [Chem.MolToSmiles(mol) for mol in mols]
-        pharmacophore_list = [
-            self.pharmacophore_dataset.get_pharmacophore_data_from_idx(p_id)
-            for i, p_id in enumerate(pharmacophore_ids.tolist())
-        ]
 
-        all_preds = []
-        for batch in self.prepare_affinity_batch(smi_list, pharmacophore_list):
-            batch = {k: v.to(self.device) for k, v in batch.items()}
-            preds = self.models["affinity"](batch).reshape((-1,)).cpu().detach()
-            all_preds.append(preds)
+        if self.cfg.task.pharmaco_frag.affinity_predictor == "alpha":
+            pdb_ids = self.pharmacophore_dataset.get_keys_from_idxs(
+                pharmacophore_ids.tolist()
+            )
+            preds = []
+            for smi, pdb_id in zip(smi_list, pdb_ids):
+                try:
+                    cache = torch.load(
+                        f"dataset/docking_pharmacophores/{pdb_id}_rec.pt",
+                        map_location=self.device,
+                    )
+                    preds.append(self.affinity_model.scoring(cache, smi))
+                except FileNotFoundError:
+                    preds.append(np.nan)
 
-        preds = torch.cat(all_preds)
-        return preds
+            return torch.as_tensor(preds)
 
     def compute_flat_rewards(
         self,
@@ -386,9 +378,9 @@ class PharmacophoreTrainer(StandardOnlineTrainer):
 def main():
     """Example of how this model can be run."""
     hps = {
-        "log_dir": "./logs/2024_01_11_run_pharmaco_frag_beta_qed_w_docking_score_cutoff",
+        "log_dir": "./logs/2024_01_11_run_pharmaco_frag_alpha_qed_w_docking_score_cutoff",
         "split_file": "dataset/split_by_name.pt",
-        "affinity_predictor_path": "logs/debug_docking_score_prediction_beta/model_state_23.pt",
+        "affinity_predictor_path": "model_weights/base_head.pth",
         "pharmacophore_db_path": "misc/pharmacophores_db.lmdb",
         "device": "cuda" if torch.cuda.is_available() else "cpu",
         "overwrite_existing_exp": True,
@@ -407,7 +399,7 @@ def main():
         "task": {
             "pharmaco_frag": {
                 "fragment_type": "zinc250k_50cutoff_brics",
-                "affinity_predictor": "beta",
+                "affinity_predictor": "alpha",
                 "min_docking_score": -5.0,
             },
         },
