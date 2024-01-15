@@ -102,6 +102,48 @@ def compute_docking_score_from_pdbqt(
     return best_affinity
 
 
+def default_compute_docking_score_from_smiles(
+    pdb_path: str,
+    smi: str,
+    center: tuple[float, float, float],
+) -> float:
+    return compute_docking_score_from_smiles(
+        pdb_path=pdb_path,
+        smi=smi,
+        center=center,
+    )
+
+
+def compute_docking_score_from_smiles(
+    pdb_path: str,
+    smi: str,
+    temp_folder: Optional[str] = None,
+    keep_temp_folder=True,
+    box_size: float = 30,
+    seed: int = 42,
+    exhaustiveness: int = 8,
+    score_only: bool = False,
+    local_search: bool = False,
+    center: Optional[tuple[float, float, float]] = None,
+) -> float:
+    with tempfile.TemporaryDirectory() as temp_folder:
+        temp_lig_path = os.path.join(temp_folder, "original_ligand.sdf")
+        molecules.write_sdf_from_smile(smi, temp_lig_path)
+
+        return compute_docking_score_from_sdf(
+            pdb_path=pdb_path,
+            sdf_path=temp_lig_path,
+            temp_folder=temp_folder,
+            keep_temp_folder=keep_temp_folder,
+            box_size=box_size,
+            seed=seed,
+            exhaustiveness=exhaustiveness,
+            score_only=score_only,
+            local_search=local_search,
+            center=center,
+        )
+
+
 def compute_docking_score_from_sdf(
     pdb_path: str,
     sdf_path: str,
@@ -112,6 +154,7 @@ def compute_docking_score_from_sdf(
     exhaustiveness: int = 8,
     score_only: bool = False,
     local_search: bool = False,
+    center: Optional[tuple[float, float, float]] = None,
 ) -> float:
     if temp_folder is None:
         temp_folder = tempfile.mkdtemp()
@@ -120,22 +163,28 @@ def compute_docking_score_from_sdf(
 
     temp_lig_sdf_path = os.path.join(temp_folder, "ligand.sdf")
     temp_lig_pdbqt_path = os.path.join(temp_folder, "ligand.pdbqt")
-    temp_pocket_pdbqt_path = os.path.join(temp_folder, "pocket.pdbqt")
-
     molecules.add_implicit_hydrogens_to_sdf(sdf_path, temp_lig_sdf_path)
-
     _prepare_ligand(
         input_ligand_sdf_path=temp_lig_sdf_path,
         output_ligand_pdbqt_path=temp_lig_pdbqt_path,
     )
-    _prepare_receptor(
-        input_receptor_pdb_path=pdb_path,
-        output_receptor_pdbqt_path=temp_pocket_pdbqt_path,
-    )
 
-    center_x, center_y, center_z = molecules.get_centroid_from_sdf(
-        sdf_path=sdf_path,
-    )
+    if pdb_path.endswith(".pdbqt"):
+        temp_pocket_pdbqt_path = pdb_path
+    else:
+        temp_pocket_pdbqt_path = os.path.join(temp_folder, "pocket.pdbqt")
+        _prepare_receptor(
+            input_receptor_pdb_path=pdb_path,
+            output_receptor_pdbqt_path=temp_pocket_pdbqt_path,
+        )
+
+    if center is None:
+        assert score_only or local_search
+        center_x, center_y, center_z = molecules.get_centroid_from_sdf(
+            sdf_path=sdf_path,
+        )
+    else:
+        center_x, center_y, center_z = center
 
     best_affinity = compute_docking_score_from_pdbqt(
         ligand_pdbqt_path=temp_lig_pdbqt_path,

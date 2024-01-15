@@ -1,9 +1,8 @@
 import numpy as np
 from Bio.PDB import PDBParser
 from openbabel import pybel
-from rdkit import Chem
+from rdkit import Chem, DataStructs
 from rdkit.Chem import AllChem
-from scipy.spatial import distance_matrix
 
 
 def convert_pdb_to_sdf(pdb_file: str, sdf_file: str) -> None:
@@ -13,6 +12,27 @@ def convert_pdb_to_sdf(pdb_file: str, sdf_file: str) -> None:
 
     # Write the molecule to an SDF file
     mol.write("sdf", sdf_file, overwrite=True)
+
+
+def sdf_to_single_smiles(sdf_file: str) -> str:
+    suppl = Chem.SDMolSupplier(sdf_file)
+
+    for mol in suppl:
+        if mol is not None:
+            smiles = Chem.MolToSmiles(mol, isomericSmiles=False)
+            return smiles
+
+
+def write_sdf_from_smile(smi: str, sdf_path: str):
+    """Write an SDF file from a SMILES string."""
+    mol = Chem.MolFromSmiles(smi)
+    mol = Chem.AddHs(mol)
+
+    AllChem.EmbedMolecule(mol, AllChem.ETKDG())
+
+    writer = Chem.SDWriter(sdf_path)
+    writer.write(mol)
+    writer.close()
 
 
 def add_implicit_hydrogens_to_sdf(
@@ -162,6 +182,51 @@ def get_rototranslation_alignment(
     return rotation_matrix, original_center, new_center
 
 
+def read_pdb_file(file_path):
+    """Reads a PDB file and extracts the coordinates."""
+    coords = []
+    with open(file_path, "r") as file:
+        for line in file:
+            if line.startswith("ATOM") or line.startswith("HETATM"):
+                x, y, z = float(line[30:38]), float(line[38:46]), float(line[46:54])
+                coords.append([x, y, z])
+    return coords
+
+
+def write_pdb(coords, original_file, output_file):
+    """Writes the transformed coordinates back to a PDB file."""
+    with open(original_file, "r") as infile, open(output_file, "w") as outfile:
+        atom_idx = 0
+        for line in infile:
+            if line.startswith("ATOM") or line.startswith("HETATM"):
+                x, y, z = coords[atom_idx]
+                atom_idx += 1
+                new_line = line[:30] + f"{x:8.3f}{y:8.3f}{z:8.3f}" + line[54:]
+                outfile.write(new_line)
+            else:
+                outfile.write(line)
+
+
+def transform_pdb(
+    input_file, output_file, rotation_matrix, original_center, new_center
+):
+    """Transform the coordinates of a PDB file using a rotation matrix and center."""
+    # Read original coordinates
+    coords = np.array(read_pdb_file(input_file))
+
+    # Translate coordinates to original center
+    centered_coords = coords - original_center
+
+    # Apply rotation
+    rotated_coords = np.dot(centered_coords, rotation_matrix)
+
+    # Translate coordinates to new center
+    final_coords = rotated_coords + new_center
+
+    # Write transformed coordinates back to PDB
+    write_pdb(final_coords, input_file, output_file)
+
+
 def transform_sdf(
     input_file, output_file, rotation_matrix, original_center, new_center
 ):
@@ -190,3 +255,12 @@ def transform_sdf(
         writer = Chem.SDWriter(output_file)
         writer.write(mol)
         writer.close()
+
+
+def compute_diversity(mols):
+    diversity = []
+    fps = [Chem.RDKFingerprint(mol) for mol in mols]
+    for i in range(len(fps) - 1):
+        s = DataStructs.BulkTanimotoSimilarity(fps[i], fps[i + 1 :])
+        diversity.extend(s)
+    return diversity

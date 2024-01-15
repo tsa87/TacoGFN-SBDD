@@ -2,18 +2,24 @@ import os
 import pathlib
 import shutil
 import socket
-from typing import Callable, Dict, List, Tuple, Union
+from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
-import torch_geometric.data as gd
+import torch_geometric.loader as gl
+from rdkit import Chem
+from rdkit.Chem import Descriptors
 from rdkit.Chem.rdchem import Mol as RDMol
 from torch import Tensor, nn
 from torch.utils.data import DataLoader, Dataset
 
 from src.tacogfn.algo.trajectory_balance import PharmacophoreTrajectoryBalance
 from src.tacogfn.config import Config
-from src.tacogfn.data.pharmacophore import PharmacoDB, PharmacophoreGraphDataset
+from src.tacogfn.data.pharmacophore import (
+    PharmacoDB,
+    PharmacophoreGraphDataset,
+    PharmacophoreModel,
+)
 from src.tacogfn.data.sampling_iterator import PharmacoCondSamplingIterator
 from src.tacogfn.envs import frag_mol_env
 from src.tacogfn.eval.models.baseline import BaseAffinityPrediction
@@ -44,21 +50,27 @@ class PharmacophoreTask(GFNTask):
         self._wrap_model = wrap_model
         self.rng = rng
         self.cfg = cfg
-        self.models = self._load_task_models()
         self.dataset = dataset
         self.pharmacophore_dataset = pharmacophore_dataset
+
         self.temperature_conditional = TemperatureConditional(cfg, rng)
         self.num_cond_dim = self.temperature_conditional.encoding_size()
 
+        self._load_task_models()
+
     def _load_task_models(self):
-        # TODO: change this to affinity model KAIST is developing
-        model = BaseAffinityPrediction(
-            self.cfg.model.pharmaco_cond.pharmaco_dim, 71, 4)
-        model, self.device = self._wrap_model(model, send_to_device=True)
-        return {"affinity": model}
+        if self.cfg.task.pharmaco_frag.affinity_predictor == "alpha":
+            from src.scoring.scoring_module import AffinityPredictor
+
+            self.device = self.cfg.device
+            self.affinity_model = AffinityPredictor(
+                self.cfg.affinity_predictor_path, self.device
+            )
+
+            return {}
 
     def flat_reward_transform(self, y: Union[float, Tensor]) -> FlatRewards:
-        return FlatRewards(torch.as_tensor(y) / 8)
+        return FlatRewards(torch.as_tensor(y))
 
     def sample_conditional_information(
         self,
@@ -80,48 +92,100 @@ class PharmacophoreTask(GFNTask):
             self.temperature_conditional.transform(cond_info, flat_reward)
         )
 
+    def predict_docking_score(
+        self,
+        mols: List[RDMol],
+        pharmacophore_ids: Tensor,
+    ) -> Tensor:
+        smi_list = [Chem.MolToSmiles(mol) for mol in mols]
+
+        if self.cfg.task.pharmaco_frag.affinity_predictor == "alpha":
+            pdb_ids = self.pharmacophore_dataset.get_keys_from_idxs(
+                pharmacophore_ids.tolist()
+            )
+            preds = []
+            for smi, pdb_id in zip(smi_list, pdb_ids):
+                try:
+                    cache = torch.load(
+                        f"dataset/docking_pharmacophores/{pdb_id}_rec.pt",
+                        map_location=self.device,
+                    )
+                    preds.append(self.affinity_model.scoring(cache, smi))
+                except FileNotFoundError:
+                    preds.append(np.nan)
+
+            return torch.as_tensor(preds)
+
     def compute_flat_rewards(
         self,
         mols: List[RDMol],
         pharmacophore_ids: Tensor,
-    ) -> Tuple[FlatRewards, Tensor]:
-        graphs = [bengio2021flow.mol2graph(i) for i in mols]
-        is_valid = torch.tensor([i is not None for i in graphs]).bool()
+    ) -> Tuple[FlatRewards, Tensor, Dict[str, Tensor]]:
+        is_valid = torch.tensor([i is not None for i in mols]).bool()
         if not is_valid.any():
             return FlatRewards(torch.zeros((0, 1))), is_valid
 
-        mol_datalist = [g for i, g in enumerate(graphs) if is_valid[i]]
-        pharmacophore_batch = [
-            p
-            for i, p in enumerate(
-                self.pharmacophore_dataset.get_pharmacophore_datalist_from_idxs(
-                    pharmacophore_ids
-                )
-            )
-            if is_valid[i]
-        ]
+        mols = [m for m, v in zip(mols, is_valid) if v]
+        pharmacophore_ids = pharmacophore_ids[is_valid]
 
-        mol_batch = gd.Batch.from_data_list(mol_datalist)
-        pharmacophore_batch = gd.Batch.from_data_list(pharmacophore_batch)
+        preds = self.predict_docking_score(mols, pharmacophore_ids)
 
-        preds = self.models["affinity"](mol_batch, pharmacophore_batch)
         preds[preds.isnan()] = 0
-        preds = self.flat_reward_transform(preds).clip(1e-4, 100).reshape((-1, 1))
-        return FlatRewards(preds), is_valid
+        affinity_reward = (preds - self.cfg.task.pharmaco_frag.min_docking_score).clip(
+            -10, 0
+        ) + preds * 0.2  # leaky reward
+        affinity_reward *= -1 / 10.0  # normalize reward to be in range [0, 1]
 
+        qeds = torch.as_tensor([Descriptors.qed(mol) for mol in mols])
 
+        reward = affinity_reward * qeds
+        reward = self.flat_reward_transform(reward).clip(1e-4, 100).reshape((-1, 1))
+        return (
+            FlatRewards(reward),
+            is_valid,
+            {
+                "docking_score": preds,
+                "qed": qeds,
+            },
+        )
 
 
 class PharmacophoreTrainer(StandardOnlineTrainer):
     task: PharmacophoreTask
 
-    def setup_model(self):
-        self.model = pharmaco_cond_graph_transformer.PharmacophoreConditionalGraphTransformerGFN(
-            self.ctx,
-            self.cfg,
-            do_bck=self.cfg.algo.tb.do_parameterize_p_b,
+    def sample_molecules(
+        self,
+        pharmacophore_idxs: list[int],
+        temperatures: Optional[list[float]] = None,
+    ) -> List[RDMol]:
+        n = len(pharmacophore_idxs)
+
+        if temperatures is None:
+            temperatures = (
+                torch.ones(n) * self.cfg.cond.temperature.dist_params[1]
+            )  # default to max temperature
+
+        cond_info = {
+            "encoding": self.task.temperature_conditional.encode(temperatures),
+            "pharmacophore": torch.as_tensor(pharmacophore_idxs),
+        }
+
+        trajs = self.algo.create_training_data_from_own_samples(
+            model=self.model, n=n, cond_info=cond_info, random_action_prob=0.0
         )
-        
+
+        mols = [self.ctx.graph_to_mol(traj["result"]) for traj in trajs]
+        return mols
+
+    def setup_model(self):
+        self.model = (
+            pharmaco_cond_graph_transformer.PharmacophoreConditionalGraphTransformerGFN(
+                self.ctx,
+                self.cfg,
+                do_bck=self.cfg.algo.tb.do_parameterize_p_b,
+            )
+        )
+
     def setup_algo(self):
         self.algo = PharmacophoreTrajectoryBalance(
             self.env,
@@ -130,7 +194,6 @@ class PharmacophoreTrainer(StandardOnlineTrainer):
             self.rng,
             self.cfg,
         )
-        
 
     def set_default_hps(self, cfg: Config):
         cfg.hostname = socket.gethostname()
@@ -153,7 +216,7 @@ class PharmacophoreTrainer(StandardOnlineTrainer):
         cfg.algo.max_nodes = 9
         cfg.algo.sampling_tau = 0.9
         cfg.algo.illegal_action_logreward = -75
-        cfg.algo.train_random_action_prob = 0.01 #0.0
+        cfg.algo.train_random_action_prob = 0.01  # 0.0
         cfg.algo.valid_random_action_prob = 0.0
         cfg.algo.valid_offline_ratio = 0
         cfg.algo.tb.epsilon = None
@@ -167,12 +230,10 @@ class PharmacophoreTrainer(StandardOnlineTrainer):
         cfg.replay.capacity = 10_000
         cfg.replay.warmup = 1_000
 
-
     def setup_env_context(self):
         self.ctx = frag_mol_env.FragMolBuildingEnvContext(
             max_frags=self.cfg.algo.max_nodes, num_cond_dim=self.task.num_cond_dim
         )
-
 
     def setup_task(self):
         self.task = PharmacophoreTask(
@@ -182,7 +243,7 @@ class PharmacophoreTrainer(StandardOnlineTrainer):
             rng=self.rng,
             wrap_model=self._wrap_for_mp,
         )
-    
+
     def build_training_data_loader(self) -> DataLoader:
         model, dev = self._wrap_for_mp(self.sampling_model, send_to_device=True)
         replay_buffer, _ = self._wrap_for_mp(self.replay_buffer, send_to_device=False)
@@ -200,7 +261,7 @@ class PharmacophoreTrainer(StandardOnlineTrainer):
             log_dir=str(pathlib.Path(self.cfg.log_dir) / "train"),
             random_action_prob=self.cfg.algo.train_random_action_prob,
             hindsight_ratio=self.cfg.replay.hindsight_ratio,
-            partition='train',
+            partition="train",
         )
         for hook in self.sampling_hooks:
             iterator.add_log_hook(hook)
@@ -230,7 +291,7 @@ class PharmacophoreTrainer(StandardOnlineTrainer):
             sample_cond_info=self.cfg.algo.valid_sample_cond_info,
             stream=False,
             random_action_prob=self.cfg.algo.valid_random_action_prob,
-            partition='test',
+            partition="test",
         )
         for hook in self.valid_sampling_hooks:
             iterator.add_log_hook(hook)
@@ -244,7 +305,7 @@ class PharmacophoreTrainer(StandardOnlineTrainer):
 
     def build_final_data_loader(self) -> DataLoader:
         model, dev = self._wrap_for_mp(self.sampling_model, send_to_device=True)
-        iterator =  PharmacoCondSamplingIterator(
+        iterator = PharmacoCondSamplingIterator(
             self.training_data,
             model,
             self.ctx,
@@ -259,7 +320,7 @@ class PharmacophoreTrainer(StandardOnlineTrainer):
             random_action_prob=0.0,
             hindsight_ratio=0.0,
             init_train_iter=self.cfg.num_training_steps,
-            partition='train',
+            partition="train",
         )
         for hook in self.sampling_hooks:
             iterator.add_log_hook(hook)
@@ -270,35 +331,37 @@ class PharmacophoreTrainer(StandardOnlineTrainer):
             persistent_workers=self.cfg.num_workers > 0,
             prefetch_factor=1 if self.cfg.num_workers else 2,
         )
-    
-    
+
     def setup_pharamaco_dataset(self):
         split_file = torch.load(self.cfg.split_file)
-        tuple_to_pharmaco_id = lambda t: t[0].split('/')[-1].split('_')[0]
+        tuple_to_pharmaco_id = lambda t: t[0].split("/")[-1].split("_rec")[0]
 
-        train_ids = [tuple_to_pharmaco_id(t) for t in split_file['train']]
-        test_ids = [tuple_to_pharmaco_id(t) for t in split_file['test']]
-                
-        return PharmacoDB(self.cfg.pharmacophore_db_path, {
-            'train': train_ids,
-            'test': test_ids
-        }, rng=np.random.default_rng(142857), verbose=True)
-    
-    
+        train_ids = [tuple_to_pharmaco_id(t) for t in split_file["train"]]
+        test_ids = [tuple_to_pharmaco_id(t) for t in split_file["test"]]
+
+        return PharmacoDB(
+            self.cfg.pharmacophore_db_path,
+            {"train": train_ids, "test": test_ids},
+            rng=np.random.default_rng(142857),
+            verbose=True,
+        )
+
     def setup(self):
         self.pharmaco_db = self.setup_pharamaco_dataset()
-        super().setup()    
-    
+        super().setup()
+
+
 def main():
     """Example of how this model can be run."""
     hps = {
-        "log_dir": "./logs/debug_run_pharmaco_frag_pb",
-        "split_file": 'dataset/split_by_name.pt',
-        "pharmacophore_db_path": "misc/pharmacophores.lmdb",
+        "log_dir": "./logs/2024_01_11_run_pharmaco_frag_alpha_qed_w_docking_score_cutoff",
+        "split_file": "dataset/split_by_name.pt",
+        "affinity_predictor_path": "model_weights/base_head.pth",
+        "pharmacophore_db_path": "misc/pharmacophores_db.lmdb",
         "device": "cuda" if torch.cuda.is_available() else "cpu",
         "overwrite_existing_exp": True,
         "num_training_steps": 10_000,
-        "num_workers": 1,
+        "num_workers": 0,
         "opt": {
             "lr_decay": 20000,
         },
@@ -308,6 +371,13 @@ def main():
                 "sample_dist": "uniform",
                 "dist_params": [0, 64.0],
             }
+        },
+        "task": {
+            "pharmaco_frag": {
+                "fragment_type": "zinc250k_50cutoff_brics",
+                "affinity_predictor": "alpha",
+                "min_docking_score": -5.0,
+            },
         },
     }
     if os.path.exists(hps["log_dir"]):
