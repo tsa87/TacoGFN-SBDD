@@ -14,7 +14,7 @@ from molvoxel import create_voxelizer, BaseVoxelizer
 
 from src.pharmaconet.network import build_model
 from src.pharmaconet.data.extract_pocket import extract_pocket
-from src.pharmaconet.data import token_inference, pointcloud, constant as C
+from src.pharmaconet.data import token_inference, pointcloud
 from src.pharmaconet.data.objects import Protein
 from src.pharmaconet.utils import load_ligand
 
@@ -121,7 +121,7 @@ class PrecalculationModule():
             cavities_narrow, cavities_wide = self.model.backbone.forward_cavity_extraction(bottom_features)
             token_scores_list, token_features_list = self.model.backbone.forward_token_prediction(bottom_features, [tokens])
 
-            token_scores = token_scores_list[0]
+            token_scores = token_scores_list[0].sigmoid()
             token_features = token_features_list[0]
             cavity_narrow = cavities_narrow.squeeze(0).sigmoid() > self.focus_threshold                 # [1, D, H, W]
             cavity_wide = cavities_wide.squeeze(0).sigmoid() > self.focus_threshold                     # [1, D, H, W]
@@ -133,6 +133,7 @@ class PrecalculationModule():
             # NOTE: Pre-Calculation
             pocket_features, token_features_list = self.model.head.ready_to_calculate(multi_scale_features, token_features_list)
 
+        print(token_features_list[0].size())
         out = {
             'pocket_features': pocket_features[0].cpu(),         # [Fh]
             'token_features': token_features_list[0].cpu()       # [Ntoken', Fh]
