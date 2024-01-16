@@ -3,8 +3,8 @@
 
 1. Setup up Conda Environment
 ```bash
-sudo apt-get install build-essential
-sudo apt-get install libxau6
+sudo apt-get -y install build-essential
+sudo apt-get -y install libxau6
 
 conda env create -f environment.yml
 ```
