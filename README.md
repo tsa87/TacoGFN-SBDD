@@ -9,7 +9,7 @@ sudo apt-get -y install libxau6
 sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test
 sudo apt install -y g++-11
 
-conda install -n base conda-libmamba-solver
+conda install -n base conda-libmamba-solver --yes
 conda config --set solver libmamba
 
 conda env create -f environment.yml
