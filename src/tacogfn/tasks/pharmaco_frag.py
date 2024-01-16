@@ -449,8 +449,10 @@ def main():
                 "leaky_coefficient": 0.2,
             },
         },
-        "pharmaco_cond": {
-            "pharmaco_dim": 128,
+        "model": {
+            "pharmaco_cond": {
+                "pharmaco_dim": 128,
+            },
         },
     }
     if os.path.exists(hps["log_dir"]):
