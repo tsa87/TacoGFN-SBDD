@@ -81,6 +81,7 @@ class Config:
     """
 
     log_dir: str = MISSING
+    logger: str = "wandb"  # "wandb" or "tensorboard"
     device: str = "cuda"
     split_file: str = MISSING
     pharmacophore_db_path: str = MISSING
