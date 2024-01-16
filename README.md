@@ -27,7 +27,9 @@ tar -xvzf tacogfn_data.tar.gz
 
 4. Install MolVoxel
 ```bash
-pip install molvoxel
+(Changing this because an error)
+cd src/molvoxel
+pip install -e .
 ```
 
 4. Install ADFR for Docking
