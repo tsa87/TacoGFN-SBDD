@@ -1,12 +1,13 @@
 dataset/
-model/weights
+misc/*
+model_weights/*
+
 tools/
 src/logs
 docking_temp/
-misc/*
-model_weights/*
 logs/
 
+*.gz
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
