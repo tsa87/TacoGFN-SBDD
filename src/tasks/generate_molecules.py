@@ -52,7 +52,7 @@ def main() -> None:
 
     results = {}
 
-    for idx in tqdm(test_idxs[:5]):
+    for idx in tqdm(test_idxs):
         # Generate molecules in batches
         batch_sizes = [_BATCH_SIZE.value] * (_NUM_PER_POCKET.value // _BATCH_SIZE.value)
         if _NUM_PER_POCKET.value % _BATCH_SIZE.value != 0:
@@ -60,11 +60,17 @@ def main() -> None:
 
         start = time.time()
         all_mols = []
+        all_preds = []
         for size in batch_sizes:
             mols = trail.sample_molecules(
                 [idx] * size,
             )
+            preds = trail.task.predict_docking_score(
+                mols, torch.tensor([idx] * size)
+            ).tolist()
+
             all_mols.extend(mols)
+            all_preds.extend(preds)
 
         end = time.time()
         smiles = [Chem.MolToSmiles(mol) for mol in mols]
@@ -72,6 +78,7 @@ def main() -> None:
         pdb_id = trail.pharmaco_db.idx_to_id[idx]
         results[pdb_id] = {
             "smiles": smiles,
+            "preds": all_preds,
             "time": end - start,
         }
 
