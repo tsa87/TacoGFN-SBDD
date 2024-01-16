@@ -247,11 +247,11 @@ class PharmacoDB:
             pharmacophore_ids = self.rng.choice(
                 self.all_id,
                 size=n,
-                replace=False,
+                replace=True,
             )
         else:
             pharmacophore_ids = self.rng.choice(
-                self.id_partition[partition], size=n, replace=False
+                self.id_partition[partition], size=n, replace=True
             )
         return [self.id_to_idx[pdb_id] for pdb_id in pharmacophore_ids]
 
