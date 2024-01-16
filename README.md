@@ -3,9 +3,11 @@
 
 1. Setup up Conda Environment
 ```bash
-(Optional)
+(Optional for remote machine that has nothing)
 sudo apt-get -y install build-essential
 sudo apt-get -y install libxau6
+sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test
+sudo apt install -y g++-11
 
 conda install -n base conda-libmamba-solver
 conda config --set solver libmamba
