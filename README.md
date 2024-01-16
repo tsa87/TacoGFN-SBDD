@@ -13,10 +13,10 @@ conda config --set solver libmamba
 conda env create -f environment.yml
 ```
 
-2. Download and unzip CrossDock Dataset
-TODO: add instructions; move all protein.pdb, ligand.pdb into folder
-TODO: add instructions on getting docking score from type files 
-```bash 
+2. Download dataset
+```bash
+gdown --id 1Mdg3eIhXube6TpctjPBUN5JVFDvkxNRO
+tar -xvzf tacogfn_data.tar.gz
 ```
 
 3. Compute pharmacophore models
