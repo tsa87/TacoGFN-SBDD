@@ -25,7 +25,7 @@ class PharmacoFragTaskConfig:
     fragment_type: str = "gflownet"  # or zinc250k_50cutoff_brics
     affinity_predictor: str = "beta"  # or "alpha"
     min_docking_score: float = -5.0  # at least this good to get a reward
-    leaky_coefficient: float = 0.0  # 0.0 means no leaky reward for docking score
+    leaky_coefficient: float = 0.2  # 0.0 means no leaky reward for docking score
 
 
 @dataclass
