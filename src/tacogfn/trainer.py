@@ -409,7 +409,7 @@ class GFNTrainer:
 
         else:
             if not hasattr(self, "_wandb_initialized"):
-                wandb.init(project="PharmacoGFN", config=self.cfg)
+                wandb.init(project="PharmacoGFN")
                 self._wandb_initialized = True
 
             for k, v in info.items():
