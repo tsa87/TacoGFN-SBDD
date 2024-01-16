@@ -17,6 +17,7 @@ conda env create -f environment.yml
 
 2. Download dataset
 ```bash
+pip install gdown
 gdown --id 1Mdg3eIhXube6TpctjPBUN5JVFDvkxNRO
 tar -xvzf tacogfn_data.tar.gz
 ```
