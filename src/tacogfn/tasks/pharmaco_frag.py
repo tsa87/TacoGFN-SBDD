@@ -204,7 +204,9 @@ class PharmacophoreTask(GFNTask):
         qeds = torch.as_tensor([Descriptors.qed(mol) for mol in mols])
         sas = torch.as_tensor([(10 - sascore.calculateScore(mol)) / 9 for mol in mols])
 
-        reward = affinity_reward * qeds * sas
+        reward = (
+            affinity_reward * qeds * sas * self.cfg.task.pharmaco_frag.reward_multiplier
+        )
         reward = self.flat_reward_transform(reward).clip(1e-4, 100).reshape((-1, 1))
         return (
             FlatRewards(reward),
@@ -447,6 +449,7 @@ def main():
                 "affinity_predictor": "alpha",
                 "min_docking_score": -5.0,
                 "leaky_coefficient": 0.2,
+                "reward_multiplier": 5.0,
             },
         },
         "model": {
