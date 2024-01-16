@@ -12,6 +12,7 @@ import torch
 import torch.nn as nn
 import torch.utils.tensorboard
 import torch_geometric.data as gd
+import wandb
 from omegaconf import OmegaConf
 from rdkit import RDLogger
 from rdkit.Chem.rdchem import Mol as RDMol
@@ -398,12 +399,21 @@ class GFNTrainer:
         )
 
     def log(self, info, index, key):
-        if not hasattr(self, "_summary_writer"):
-            self._summary_writer = torch.utils.tensorboard.SummaryWriter(
-                self.cfg.log_dir
-            )
-        for k, v in info.items():
-            self._summary_writer.add_scalar(f"{key}_{k}", v, index)
+        if self.cfg.logger == "tensorboard":
+            if not hasattr(self, "_summary_writer"):
+                self._summary_writer = torch.utils.tensorboard.SummaryWriter(
+                    self.cfg.log_dir
+                )
+            for k, v in info.items():
+                self._summary_writer.add_scalar(f"{key}_{k}", v, index)
+
+        else:
+            if not hasattr(self, "_wandb_initialized"):
+                wandb.init(project="PharmacoGFN", config=self.cfg)
+                self._wandb_initialized = True
+
+            for k, v in info.items():
+                wandb.log({f"{key}_{k}": v, "global_step": index})
 
 
 def cycle(it):
