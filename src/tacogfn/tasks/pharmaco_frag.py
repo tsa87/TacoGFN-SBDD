@@ -157,6 +157,11 @@ class PharmacophoreTask(GFNTask):
                     )
                     preds.append(self.affinity_model.scoring(cache, smi))
                 except FileNotFoundError:
+                    print(f"Could not find pharmacophore for {pdb_id}")
+                    preds.append(np.nan)
+                except Exception as e:
+                    print(e)
+                    print(smi)
                     preds.append(np.nan)
 
             return torch.as_tensor(preds)
@@ -192,7 +197,7 @@ class PharmacophoreTask(GFNTask):
 
         preds[preds.isnan()] = 0
         affinity_reward = (preds - self.cfg.task.pharmaco_frag.min_docking_score).clip(
-            -10, 0
+            -15, 0
         ) + preds * self.cfg.task.pharmaco_frag.leaky_coefficient  # leaky reward
         affinity_reward *= -1 / 10.0  # normalize reward to be in range [0, 1]
 
@@ -224,17 +229,19 @@ class PharmacophoreTrainer(StandardOnlineTrainer):
 
         if temperatures is None:
             temperatures = (
-                torch.ones(n) * self.cfg.cond.temperature.dist_params[1]
-            )  # default to max temperature
+                torch.rand(n) * self.cfg.cond.temperature.dist_params[1] * 1 / 4
+                + torch.ones(n) * self.cfg.cond.temperature.dist_params[1] * 3 / 4
+            )  # default to sampling from the upper 3/4 of the temperature range
 
         cond_info = {
             "encoding": self.task.temperature_conditional.encode(temperatures),
             "pharmacophore": torch.as_tensor(pharmacophore_idxs),
         }
 
-        trajs = self.algo.create_training_data_from_own_samples(
-            model=self.model, n=n, cond_info=cond_info, random_action_prob=0.0
-        )
+        with torch.no_grad():
+            trajs = self.algo.create_training_data_from_own_samples(
+                model=self.model, n=n, cond_info=cond_info, random_action_prob=0.0
+            )
 
         mols = [self.ctx.graph_to_mol(traj["result"]) for traj in trajs]
         return mols
@@ -268,7 +275,7 @@ class PharmacophoreTrainer(StandardOnlineTrainer):
         cfg.opt.lr_decay = 20_000
         cfg.opt.clip_grad_type = "norm"
         cfg.opt.clip_grad_param = 10
-        cfg.algo.global_batch_size = 64
+        cfg.algo.global_batch_size = 128
         cfg.algo.offline_ratio = 0
         cfg.model.num_emb = 128
         cfg.model.num_layers = 4
@@ -416,13 +423,13 @@ class PharmacophoreTrainer(StandardOnlineTrainer):
 def main():
     """Example of how this model can be run."""
     hps = {
-        "log_dir": "./logs/2024_01_14_run_pharmaco_frag_alpha_qed_w_docking_score_cutoff",
+        "log_dir": "./logs/2024_01_16_run_pharmaco_frag_alpha_qed_w_docking_score_cutoff",
         "split_file": "dataset/split_by_name.pt",
         "affinity_predictor_path": "model_weights/base_100_per_pocket.pth",
         "pharmacophore_db_path": "misc/pharmacophores_db.lmdb",
         "device": "cuda" if torch.cuda.is_available() else "cpu",
         "overwrite_existing_exp": True,
-        "num_training_steps": 10_000,
+        "num_training_steps": 50_000,
         "num_workers": 0,
         "opt": {
             "lr_decay": 20000,
