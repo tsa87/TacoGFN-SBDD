@@ -3,8 +3,12 @@
 
 1. Setup up Conda Environment
 ```bash
+(Optional)
 sudo apt-get -y install build-essential
 sudo apt-get -y install libxau6
+
+conda install -n base conda-libmamba-solver
+conda config --set solver libmamba
 
 conda env create -f environment.yml
 ```
