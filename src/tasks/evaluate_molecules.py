@@ -43,6 +43,18 @@ _RESULTS_FOLDER = flags.DEFINE_string(
     "Path to save the evaluated molecules.",
 )
 
+_MOLS_PER_POCKET = flags.DEFINE_integer(
+    "mols_per_pocket",
+    100,
+    "Number of molecules to evaluate per pocket.",
+)
+
+_NUM_OF_POCKETS = flags.DEFINE_integer(
+    "num_of_pockets",
+    100,
+    "Number of pockets to evaluate.",
+)
+
 
 def compute_docking_scores(
     pocket_id: str,
@@ -75,17 +87,21 @@ def main() -> None:
     flags.FLAGS(sys.argv)
 
     pocket_to_centroid = torch.load(_POCKET_TO_CENTRIOD_PATH.value)
-    # pocket_to_score = torch.load(_POCKET_TO_SCORE_PATH.value)
+    pocket_to_score = torch.load(_POCKET_TO_SCORE_PATH.value)
     generated_results = json.load(open(_MOLECULES_PATH.value))
+
+    # Only evaluate the first _NUM_OF_POCKETS.value pockets
+    generated_results = dict(list(generated_results.items())[: _NUM_OF_POCKETS.value])
 
     evaluated_results = {}
 
     for pocket, val in tqdm(generated_results.items()):
         centroid = pocket_to_centroid[pocket]
-        # native_docking_score = pocket_to_score[pocket]
+        native_docking_score = pocket_to_score[pocket]
 
         time = val["time"]
-        smiles = val["smiles"]
+        preds = val["preds"]
+        smiles = val["smiles"][: _MOLS_PER_POCKET.value]
         mols = [Chem.MolFromSmiles(smi) for smi in smiles]
 
         qeds = [Descriptors.qed(mol) for mol in mols]
@@ -98,10 +114,11 @@ def main() -> None:
             "smiles": smiles,
             "qeds": qeds,
             "sas": sas,
+            "preds": preds,
             "docking_scores": docking_scores,
             "diversity": diversity,
             "centroid": centroid,
-            # "native_docking_score": native_docking_score,
+            "native_docking_score": native_docking_score,
         }
 
     filename = _MOLECULES_PATH.value.split("/")[-1].split(".")[0]
