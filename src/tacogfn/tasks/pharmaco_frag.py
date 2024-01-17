@@ -435,7 +435,7 @@ class PharmacophoreTrainer(StandardOnlineTrainer):
 def main():
     """Example of how this model can be run."""
     hps = {
-        "log_dir": "./logs/2024_01_16_run_pharmaco_frag_alpha",
+        "log_dir": "./logs/2024_01_16_run_pharmaco_frag_alpha_mw_only",
         "split_file": "dataset/split_by_name.pt",
         "affinity_predictor_path": "model_weights/base_100_per_pocket.pth",
         "pharmacophore_db_path": "misc/pharmacophores_db.lmdb",
@@ -460,7 +460,7 @@ def main():
                 "min_docking_score": -5.0,
                 "leaky_coefficient": 0.2,
                 "reward_multiplier": 5.0,
-                "objectives": ["docking", "sa", "qed"],
+                "objectives": ["docking", "mw"],
             },
         },
         "model": {
