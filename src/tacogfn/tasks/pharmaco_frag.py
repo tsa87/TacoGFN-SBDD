@@ -202,22 +202,16 @@ class PharmacophoreTask(GFNTask):
         affinity_reward = affinity_reward.clip(0, 1)
 
         # 1 for qed above 0.7, linear decay to 0 from 0.7 to 0.0
-        qeds = [Descriptors.qed(mol) for mol in mols]
-        qed_reward = torch.as_tensor(
-            [
-                min(self.cfg.task.pharmaco_frag.max_qed_reward, qed)
-                / self.cfg.task.pharmaco_frag.max_qed_reward
-                for qed in qeds
-            ]
+        qeds = torch.as_tensor([Descriptors.qed(mol) for mol in mols])
+        qed_reward = (
+            torch.min(self.cfg.task.pharmaco_frag.max_qed_reward, qeds)
+            / self.cfg.task.pharmaco_frag.max_qed_reward
         )
 
-        sas = [(10 - sascore.calculateScore(mol)) / 9 for mol in mols]
-        sa_reward = torch.as_tensor(
-            [
-                min(self.cfg.task.pharmaco_frag.max_sa_reward, sa)
-                / self.cfg.task.pharmaco_frag.max_sa_reward
-                for sa in sas
-            ]
+        sas = torch.as_tensor([(10 - sascore.calculateScore(mol)) / 9 for mol in mols])
+        sa_reward = (
+            torch.min(self.cfg.task.pharmaco_frag.max_sa_reward, sas)
+            / self.cfg.task.pharmaco_frag.max_sa_reward
         )
 
         # 1 until 300 then linear decay to 0 until 1000
