@@ -202,21 +202,21 @@ class PharmacophoreTask(GFNTask):
         affinity_reward = affinity_reward.clip(0, 1)
 
         # 1 for qed above 0.7, linear decay to 0 from 0.7 to 0.0
-        qeds = torch.as_tensor(
+        qeds = [Descriptors.qed(mol) for mol in mols]
+        qed_reward = torch.as_tensor(
             [
-                min(self.cfg.task.pharmaco_frag.max_qed_reward, Descriptors.qed(mol))
+                min(self.cfg.task.pharmaco_frag.max_qed_reward, qed)
                 / self.cfg.task.pharmaco_frag.max_qed_reward
-                for mol in mols
+                for qed in qeds
             ]
         )
-        sas = torch.as_tensor(
+
+        sas = [(10 - sascore.calculateScore(mol)) / 9 for mol in mols]
+        sa_reward = torch.as_tensor(
             [
-                min(
-                    self.cfg.task.pharmaco_frag.max_sa_reward,
-                    (10 - sascore.calculateScore(mol)) / 9,
-                )
+                min(self.cfg.task.pharmaco_frag.max_sa_reward, sa)
                 / self.cfg.task.pharmaco_frag.max_sa_reward
-                for mol in mols
+                for sa in sas
             ]
         )
 
@@ -227,9 +227,9 @@ class PharmacophoreTask(GFNTask):
 
         reward = affinity_reward * self.cfg.task.pharmaco_frag.reward_multiplier
         if "qed" in self.cfg.task.pharmaco_frag.objectives:
-            reward *= qeds
+            reward *= qed_reward
         if "sa" in self.cfg.task.pharmaco_frag.objectives:
-            reward *= sas
+            reward *= sa_reward
         if "mw" in self.cfg.task.pharmaco_frag.objectives:
             reward *= mw
 
