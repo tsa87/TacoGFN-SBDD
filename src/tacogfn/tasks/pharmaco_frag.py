@@ -483,8 +483,10 @@ def main():
         },
         "model": {
             "pharmaco_cond": {
-                "pharmaco_dim": 128,
+                "pharmaco_dim": 256,
             },
+            "num_emb": 256,
+            "num_layers": 2,
         },
     }
     if os.path.exists(hps["log_dir"]):
