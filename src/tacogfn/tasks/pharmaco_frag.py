@@ -204,13 +204,13 @@ class PharmacophoreTask(GFNTask):
         # 1 for qed above 0.7, linear decay to 0 from 0.7 to 0.0
         qeds = torch.as_tensor([Descriptors.qed(mol) for mol in mols])
         qed_reward = (
-            torch.min(self.cfg.task.pharmaco_frag.max_qed_reward, qeds)
+            torch.min(torch.tensor(self.cfg.task.pharmaco_frag.max_qed_reward), qeds)
             / self.cfg.task.pharmaco_frag.max_qed_reward
         )
 
         sas = torch.as_tensor([(10 - sascore.calculateScore(mol)) / 9 for mol in mols])
         sa_reward = (
-            torch.min(self.cfg.task.pharmaco_frag.max_sa_reward, sas)
+            torch.min(torch.tensor(self.cfg.task.pharmaco_frag.max_sa_reward), sas)
             / self.cfg.task.pharmaco_frag.max_sa_reward
         )
 
@@ -447,7 +447,7 @@ def main():
     hps = {
         "log_dir": "./logs/2024_01_16_run_pharmaco_frag_alpha_mw_only",
         "split_file": "dataset/split_by_name.pt",
-        "affinity_predictor_path": "model_weights/base_100_per_pocket.pth",
+        "affinity_predictor_path": "model_weights/20240117_500.pth",
         "pharmacophore_db_path": "misc/pharmacophores_db.lmdb",
         "device": "cuda" if torch.cuda.is_available() else "cpu",
         "overwrite_existing_exp": True,
