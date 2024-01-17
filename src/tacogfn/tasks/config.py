@@ -27,6 +27,7 @@ class PharmacoFragTaskConfig:
     min_docking_score: float = -5.0  # at least this good to get a reward
     leaky_coefficient: float = 0.2  # 0.0 means no leaky reward for docking score
     reward_multiplier: float = 1.0
+    objectives: List[str] = field(default_factory=lambda: ["docking", "qed", "sa"])
 
 
 @dataclass

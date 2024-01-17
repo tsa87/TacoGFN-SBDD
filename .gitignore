@@ -6,6 +6,7 @@ tools/
 src/logs
 docking_temp/
 logs/
+wandb/
 
 *.gz
 
