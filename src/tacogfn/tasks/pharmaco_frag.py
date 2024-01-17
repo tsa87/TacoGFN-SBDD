@@ -442,7 +442,7 @@ def main():
         "device": "cuda" if torch.cuda.is_available() else "cpu",
         "overwrite_existing_exp": True,
         "num_training_steps": 50_000,
-        "num_workers": 4,
+        "num_workers": 8,
         "opt": {
             "lr_decay": 20000,
         },
