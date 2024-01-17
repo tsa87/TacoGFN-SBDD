@@ -465,7 +465,7 @@ def main():
         },
         "model": {
             "pharmaco_cond": {
-                "pharmaco_dim": 64,
+                "pharmaco_dim": 128,
             },
         },
     }
