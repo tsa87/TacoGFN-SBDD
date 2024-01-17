@@ -25,6 +25,8 @@ class PharmacoFragTaskConfig:
     fragment_type: str = "gflownet"  # or zinc250k_50cutoff_brics
     affinity_predictor: str = "beta"  # or "alpha"
     min_docking_score: float = -5.0  # at least this good to get a reward
+    max_qed_reward: float = 0.7  # no extra reward for qed above this
+    max_sa_reward: float = 0.75  # no extra reward for sa below this
     leaky_coefficient: float = 0.2  # 0.0 means no leaky reward for docking score
     reward_multiplier: float = 1.0
     objectives: List[str] = field(default_factory=lambda: ["docking", "qed", "sa"])
