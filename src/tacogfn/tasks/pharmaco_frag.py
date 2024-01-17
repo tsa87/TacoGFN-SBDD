@@ -201,8 +201,24 @@ class PharmacophoreTask(GFNTask):
         affinity_reward *= -1 / 10.0  # normalize reward to be in range [0, 1]
         affinity_reward = affinity_reward.clip(0, 1)
 
-        qeds = torch.as_tensor([Descriptors.qed(mol) for mol in mols])
-        sas = torch.as_tensor([(10 - sascore.calculateScore(mol)) / 9 for mol in mols])
+        # 1 for qed above 0.7, linear decay to 0 from 0.7 to 0.0
+        qeds = torch.as_tensor(
+            [
+                min(self.cfg.task.pharmaco_frag.max_qed_reward, Descriptors.qed(mol))
+                / self.cfg.task.pharmaco_frag.max_qed_reward
+                for mol in mols
+            ]
+        )
+        sas = torch.as_tensor(
+            [
+                min(
+                    self.cfg.task.pharmaco_frag.max_sa_reward,
+                    (10 - sascore.calculateScore(mol)) / 9,
+                )
+                / self.cfg.task.pharmaco_frag.max_sa_reward
+                for mol in mols
+            ]
+        )
 
         # 1 until 300 then linear decay to 0 until 1000
         mw = torch.as_tensor(
@@ -457,15 +473,17 @@ def main():
             "pharmaco_frag": {
                 "fragment_type": "zinc250k_50cutoff_brics",
                 "affinity_predictor": "alpha",
-                "min_docking_score": -5.0,
+                "min_docking_score": -5.0,  # no reward below this
                 "leaky_coefficient": 0.2,
-                "reward_multiplier": 5.0,
-                "objectives": ["docking", "mw"],
+                "reward_multiplier": 2.0,
+                "max_qed_reward": 0.65,  # no extra reward for qed above this
+                "max_sa_reward": 0.75,  # no extra reward for sa above this
+                "objectives": ["docking", "qed", "sa"],
             },
         },
         "model": {
             "pharmaco_cond": {
-                "pharmaco_dim": 128,
+                "pharmaco_dim": 64,
             },
         },
     }
