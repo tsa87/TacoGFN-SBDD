@@ -63,9 +63,8 @@ class PharmacophoreTask(GFNTask):
         if self.cfg.task.pharmaco_frag.affinity_predictor == "alpha":
             from src.scoring.scoring_module import AffinityPredictor
 
-            self.device = self.cfg.device
             self.affinity_model = AffinityPredictor(
-                self.cfg.affinity_predictor_path, self.device
+                self.cfg.affinity_predictor_path, "cpu"
             )
 
             return {}
@@ -153,7 +152,7 @@ class PharmacophoreTask(GFNTask):
                 try:
                     cache = torch.load(
                         f"dataset/docking_pharmacophores/{pdb_id}_rec.pt",
-                        map_location=self.device,
+                        map_location="cpu",
                     )
                     preds.append(self.affinity_model.scoring(cache, smi))
                 except FileNotFoundError:
@@ -200,11 +199,24 @@ class PharmacophoreTask(GFNTask):
             -15, 0
         ) + preds * self.cfg.task.pharmaco_frag.leaky_coefficient  # leaky reward
         affinity_reward *= -1 / 10.0  # normalize reward to be in range [0, 1]
+        affinity_reward = affinity_reward.clip(0, 1)
 
         qeds = torch.as_tensor([Descriptors.qed(mol) for mol in mols])
         sas = torch.as_tensor([(10 - sascore.calculateScore(mol)) / 9 for mol in mols])
 
-        reward = affinity_reward * qeds * sas
+        # 1 until 300 then linear decay to 0 until 1000
+        mw = torch.as_tensor(
+            [((300 - Descriptors.MolWt(mol)) / 700 + 1) for mol in mols]
+        ).clip(0, 1)
+
+        reward = affinity_reward * self.cfg.task.pharmaco_frag.reward_multiplier
+        if "qed" in self.cfg.task.pharmaco_frag.objectives:
+            reward *= qeds
+        if "sa" in self.cfg.task.pharmaco_frag.objectives:
+            reward *= sas
+        if "mw" in self.cfg.task.pharmaco_frag.objectives:
+            reward *= mw
+
         reward = self.flat_reward_transform(reward).clip(1e-4, 100).reshape((-1, 1))
         return (
             FlatRewards(reward),
@@ -275,7 +287,7 @@ class PharmacophoreTrainer(StandardOnlineTrainer):
         cfg.opt.lr_decay = 20_000
         cfg.opt.clip_grad_type = "norm"
         cfg.opt.clip_grad_param = 10
-        cfg.algo.global_batch_size = 128
+        cfg.algo.global_batch_size = 64
         cfg.algo.offline_ratio = 0
         cfg.model.num_emb = 128
         cfg.model.num_layers = 4
@@ -423,14 +435,14 @@ class PharmacophoreTrainer(StandardOnlineTrainer):
 def main():
     """Example of how this model can be run."""
     hps = {
-        "log_dir": "./logs/2024_01_16_run_pharmaco_frag_alpha_qed_w_docking_score_cutoff",
+        "log_dir": "./logs/2024_01_16_run_pharmaco_frag_alpha_docking_mw",
         "split_file": "dataset/split_by_name.pt",
         "affinity_predictor_path": "model_weights/base_100_per_pocket.pth",
         "pharmacophore_db_path": "misc/pharmacophores_db.lmdb",
         "device": "cuda" if torch.cuda.is_available() else "cpu",
         "overwrite_existing_exp": True,
         "num_training_steps": 50_000,
-        "num_workers": 0,
+        "num_workers": 4,
         "opt": {
             "lr_decay": 20000,
         },
@@ -447,6 +459,13 @@ def main():
                 "affinity_predictor": "alpha",
                 "min_docking_score": -5.0,
                 "leaky_coefficient": 0.2,
+                "reward_multiplier": 5.0,
+                "objectives": ["docking", "sa", "qed"],
+            },
+        },
+        "model": {
+            "pharmaco_cond": {
+                "pharmaco_dim": 128,
             },
         },
     }
