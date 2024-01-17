@@ -9,7 +9,7 @@ from src.scoring import PrecalculationModule
 
 
 MODEL_PATH = './model_weights/model.tar'
-HEAD_PATH = './model_weights/base_100_per_pocket.pth'
+HEAD_PATH = './model_weights/20240117_500.pth'
 
 
 class Precalculation_ArgParser(argparse.ArgumentParser):
