@@ -1,8 +1,6 @@
 import argparse
-import pathlib
 from openbabel import pybel
 import torch
-import time
 import sys
 
 sys.path.append('.')
@@ -10,7 +8,7 @@ sys.path.append('..')
 from src.scoring.scoring_module import AffinityPredictor
 
 
-HEAD_PATH = "./model_weights/base_100_per_pocket.pth"
+HEAD_PATH = "./model_weights/20240117_500.pth"
 
 
 class Scoring_ArgParser(argparse.ArgumentParser):
