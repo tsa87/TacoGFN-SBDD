@@ -482,6 +482,12 @@ def main():
             "num_emb": 256,
             "num_layers": 2,
         },
+        "replay": {
+            "use": True,
+            "capacity": 100000,
+            "warmup": 1000,
+            "hindsight_ratio": 0.3,
+        },
     }
     if os.path.exists(hps["log_dir"]):
         if hps["overwrite_existing_exp"]:

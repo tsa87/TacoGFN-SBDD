@@ -20,6 +20,9 @@ def sdf_to_single_smiles(sdf_file: str) -> str:
     for mol in suppl:
         if mol is not None:
             smiles = Chem.MolToSmiles(mol, isomericSmiles=False)
+            # take the largest fragment
+            frags = smiles.split(".")
+            smiles = max(frags, key=len)
             return smiles
 
 
