@@ -476,7 +476,7 @@ def main():
                 "min_docking_score": -5.0,  # no reward below this
                 "leaky_coefficient": 0.2,
                 "reward_multiplier": 2.0,
-                "max_qed_reward": 0.65,  # no extra reward for qed above this
+                "max_qed_reward": 0.60,  # no extra reward for qed above this
                 "max_sa_reward": 0.75,  # no extra reward for sa above this
                 "objectives": ["docking", "qed", "sa"],
             },
