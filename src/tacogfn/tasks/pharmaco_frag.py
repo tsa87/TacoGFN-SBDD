@@ -201,8 +201,24 @@ class PharmacophoreTask(GFNTask):
         affinity_reward *= -1 / 10.0  # normalize reward to be in range [0, 1]
         affinity_reward = affinity_reward.clip(0, 1)
 
-        qeds = torch.as_tensor([Descriptors.qed(mol) for mol in mols])
-        sas = torch.as_tensor([(10 - sascore.calculateScore(mol)) / 9 for mol in mols])
+        # 1 for qed above 0.7, linear decay to 0 from 0.7 to 0.0
+        qeds = torch.as_tensor(
+            [
+                min(self.cfg.task.pharmaco_frag.max_qed_reward, Descriptors.qed(mol))
+                / self.cfg.task.pharmaco_frag.max_qed_reward
+                for mol in mols
+            ]
+        )
+        sas = torch.as_tensor(
+            [
+                min(
+                    self.cfg.task.pharmaco_frag.max_sa_reward,
+                    (10 - sascore.calculateScore(mol)) / 9,
+                )
+                / self.cfg.task.pharmaco_frag.max_sa_reward
+                for mol in mols
+            ]
+        )
 
         # 1 until 300 then linear decay to 0 until 1000
         mw = torch.as_tensor(
@@ -435,14 +451,14 @@ class PharmacophoreTrainer(StandardOnlineTrainer):
 def main():
     """Example of how this model can be run."""
     hps = {
-        "log_dir": "./logs/2024_01_16_run_pharmaco_frag_alpha_docking_mw",
+        "log_dir": "./logs/2024_01_16_run_pharmaco_frag_alpha_mw_only",
         "split_file": "dataset/split_by_name.pt",
         "affinity_predictor_path": "model_weights/base_100_per_pocket.pth",
         "pharmacophore_db_path": "misc/pharmacophores_db.lmdb",
         "device": "cuda" if torch.cuda.is_available() else "cpu",
         "overwrite_existing_exp": True,
         "num_training_steps": 50_000,
-        "num_workers": 4,
+        "num_workers": 8,
         "opt": {
             "lr_decay": 20000,
         },
@@ -457,16 +473,20 @@ def main():
             "pharmaco_frag": {
                 "fragment_type": "zinc250k_50cutoff_brics",
                 "affinity_predictor": "alpha",
-                "min_docking_score": -5.0,
+                "min_docking_score": -5.0,  # no reward below this
                 "leaky_coefficient": 0.2,
-                "reward_multiplier": 5.0,
-                "objectives": ["docking", "sa", "qed"],
+                "reward_multiplier": 2.0,
+                "max_qed_reward": 0.60,  # no extra reward for qed above this
+                "max_sa_reward": 0.75,  # no extra reward for sa above this
+                "objectives": ["docking", "qed", "sa"],
             },
         },
         "model": {
             "pharmaco_cond": {
-                "pharmaco_dim": 128,
+                "pharmaco_dim": 256,
             },
+            "num_emb": 256,
+            "num_layers": 2,
         },
     }
     if os.path.exists(hps["log_dir"]):
