@@ -26,7 +26,7 @@ from src.tacogfn.eval.models.baseline import BaseAffinityPrediction
 from src.tacogfn.models import bengio2021flow, pharmaco_cond_graph_transformer
 from src.tacogfn.online_trainer import StandardOnlineTrainer
 from src.tacogfn.trainer import FlatRewards, GFNTask, RewardScalar
-from src.tacogfn.utils import sascore
+from src.tacogfn.utils import molecules, sascore
 from src.tacogfn.utils.conditioning import TemperatureConditional
 
 
@@ -203,14 +203,15 @@ class PharmacophoreTask(GFNTask):
 
         # 1 for qed above 0.7, linear decay to 0 from 0.7 to 0.0
         qeds = torch.as_tensor([Descriptors.qed(mol) for mol in mols])
+
         qed_reward = (
-            torch.min(torch.tensor(self.cfg.task.pharmaco_frag.max_qed_reward), qeds)
+            qeds.clip(0.0, self.cfg.task.pharmaco_frag.max_qed_reward)
             / self.cfg.task.pharmaco_frag.max_qed_reward
         )
 
         sas = torch.as_tensor([(10 - sascore.calculateScore(mol)) / 9 for mol in mols])
         sa_reward = (
-            torch.min(torch.tensor(self.cfg.task.pharmaco_frag.max_sa_reward), sas)
+            sas.clip(0.0, self.cfg.task.pharmaco_frag.max_sa_reward)
             / self.cfg.task.pharmaco_frag.max_sa_reward
         )
 
@@ -218,6 +219,9 @@ class PharmacophoreTask(GFNTask):
         mw = torch.as_tensor(
             [((300 - Descriptors.MolWt(mol)) / 700 + 1) for mol in mols]
         ).clip(0, 1)
+
+        d = float(np.mean(molecules.compute_diversity(mols)))
+        diversity = torch.as_tensor([d for _ in range(len(mols))])
 
         reward = affinity_reward * self.cfg.task.pharmaco_frag.reward_multiplier
         if "qed" in self.cfg.task.pharmaco_frag.objectives:
@@ -235,6 +239,8 @@ class PharmacophoreTask(GFNTask):
                 "docking_score": preds,
                 "qed": qeds,
                 "sa": sas,
+                "mw": mw,
+                "diversity": diversity,
             },
         )
 
@@ -246,6 +252,7 @@ class PharmacophoreTrainer(StandardOnlineTrainer):
         self,
         pharmacophore_idxs: list[int],
         temperatures: Optional[list[float]] = None,
+        sample_temp: float = 1.0,
     ) -> List[RDMol]:
         n = len(pharmacophore_idxs)
 
@@ -260,10 +267,14 @@ class PharmacophoreTrainer(StandardOnlineTrainer):
             "pharmacophore": torch.as_tensor(pharmacophore_idxs),
         }
 
+        # HACK: change the sample temp for inference
+        self.algo.graph_sampler.sample_temp = sample_temp
         with torch.no_grad():
             trajs = self.algo.create_training_data_from_own_samples(
                 model=self.model, n=n, cond_info=cond_info, random_action_prob=0.0
             )
+        # HACK: reset the sample temp
+        self.algo.graph_sampler.sample_temp = 1.0
 
         mols = [self.ctx.graph_to_mol(traj["result"]) for traj in trajs]
         return mols
@@ -447,16 +458,21 @@ def main():
     hps = {
         "log_dir": "./logs/2024_01_16_run_pharmaco_frag_alpha_mw_only",
         "split_file": "dataset/split_by_name.pt",
-        "affinity_predictor_path": "model_weights/20240117_500.pth",
+        "affinity_predictor_path": "model_weights/base_100_per_pocket.pth",
         "pharmacophore_db_path": "misc/pharmacophores_db.lmdb",
         "device": "cuda" if torch.cuda.is_available() else "cpu",
         "overwrite_existing_exp": True,
         "num_training_steps": 50_000,
-        "num_workers": 8,
+        "num_workers": 0,
         "opt": {
             "lr_decay": 20000,
         },
-        "algo": {"sampling_tau": 0.99, "offline_ratio": 0.0},
+        "algo": {
+            "sampling_tau": 0.99,
+            "offline_ratio": 0.0,
+            "max_nodes": 12,
+            "train_random_action_prob": 0.01,
+        },
         "cond": {
             "temperature": {
                 "sample_dist": "uniform",
@@ -467,17 +483,17 @@ def main():
             "pharmaco_frag": {
                 "fragment_type": "zinc250k_50cutoff_brics",
                 "affinity_predictor": "alpha",
-                "min_docking_score": -5.0,  # no reward below this
-                "leaky_coefficient": 0.2,
-                "reward_multiplier": 2.0,
-                "max_qed_reward": 0.60,  # no extra reward for qed above this
-                "max_sa_reward": 0.75,  # no extra reward for sa above this
+                "min_docking_score": 0,  # no reward below this
+                "leaky_coefficient": 0.0,
+                "reward_multiplier": 1.0,
+                "max_qed_reward": 0.6,  # no extra reward for qed above this
+                "max_sa_reward": 0.6,  # no extra reward for sa above this
                 "objectives": ["docking", "qed", "sa"],
             },
         },
         "model": {
             "pharmaco_cond": {
-                "pharmaco_dim": 256,
+                "pharmaco_dim": 128,
             },
             "num_emb": 256,
             "num_layers": 2,
