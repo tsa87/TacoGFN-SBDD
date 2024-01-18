@@ -2,6 +2,7 @@ import concurrent.futures
 import json
 import os
 import sys
+from pathlib import Path
 
 import torch
 from absl import flags
@@ -10,7 +11,7 @@ from rdkit.Chem import Descriptors
 from tqdm import tqdm
 
 from src.tacogfn.eval import docking
-from src.tacogfn.utils import molecules, sascore
+from src.tacogfn.utils import misc, molecules, sascore
 
 _REC_FOLDER = flags.DEFINE_string(
     "rec_folder",
@@ -55,6 +56,12 @@ _NUM_OF_POCKETS = flags.DEFINE_integer(
     "Number of pockets to evaluate.",
 )
 
+_DOCK = flags.DEFINE_boolean(
+    "dock",
+    False,
+    "Whether to compute docking scores.",
+)
+
 
 def compute_docking_scores(
     pocket_id: str,
@@ -95,6 +102,8 @@ def main() -> None:
 
     evaluated_results = {}
 
+    ref_fps = misc.get_reference_fps()
+
     for pocket, val in tqdm(generated_results.items()):
         centroid = pocket_to_centroid[pocket]
         native_docking_score = pocket_to_score[pocket]
@@ -106,8 +115,8 @@ def main() -> None:
 
         qeds = [Descriptors.qed(mol) for mol in mols]
         sas = [(10.0 - sascore.calculateScore(mol)) / 9 for mol in mols]
-        docking_scores = compute_docking_scores(pocket, smiles, centroid)
         diversity = molecules.compute_diversity(mols)
+        novelty = molecules.compute_novelty(mols, ref_fps)
 
         evaluated_results[pocket] = {
             "time": time,
@@ -115,14 +124,19 @@ def main() -> None:
             "qeds": qeds,
             "sas": sas,
             "preds": preds,
-            "docking_scores": docking_scores,
             "diversity": diversity,
+            "novelty": novelty,
             "centroid": centroid,
             "native_docking_score": native_docking_score,
         }
 
-    filename = _MOLECULES_PATH.value.split("/")[-1].split(".")[0]
+        if _DOCK.value:
+            docking_scores = compute_docking_scores(pocket, smiles, centroid)
+            evaluated_results[pocket]["docking_scores"] = docking_scores
+
+    filename = Path(_MOLECULES_PATH.value.split("/")[-1]).stem
     save_path = os.path.join(_RESULTS_FOLDER.value, f"{filename}_evaluated.json")
+    print(f"Saving evaluated results to {save_path}")
 
     with open(save_path, "w") as f:
         json.dump(evaluated_results, f)

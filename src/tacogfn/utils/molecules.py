@@ -20,6 +20,9 @@ def sdf_to_single_smiles(sdf_file: str) -> str:
     for mol in suppl:
         if mol is not None:
             smiles = Chem.MolToSmiles(mol, isomericSmiles=False)
+            # take the largest fragment
+            frags = smiles.split(".")
+            smiles = max(frags, key=len)
             return smiles
 
 
@@ -262,5 +265,16 @@ def compute_diversity(mols):
     fps = [Chem.RDKFingerprint(mol) for mol in mols]
     for i in range(len(fps) - 1):
         s = DataStructs.BulkTanimotoSimilarity(fps[i], fps[i + 1 :])
-        diversity.extend(s)
+        d = [1 - x for x in s]
+        diversity.extend(d)
     return diversity
+
+
+def compute_novelty(mols, ref_fps):
+    sims = []
+    for mol in mols:
+        fp = Chem.RDKFingerprint(mol)
+        s = DataStructs.BulkTanimotoSimilarity(fp, ref_fps)
+        sims.append(max(s))
+    distance = [1 - x for x in sims]
+    return distance
