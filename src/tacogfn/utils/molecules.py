@@ -265,5 +265,16 @@ def compute_diversity(mols):
     fps = [Chem.RDKFingerprint(mol) for mol in mols]
     for i in range(len(fps) - 1):
         s = DataStructs.BulkTanimotoSimilarity(fps[i], fps[i + 1 :])
-        diversity.extend(s)
+        d = [1 - x for x in s]
+        diversity.extend(d)
     return diversity
+
+
+def compute_novelty(mols, ref_fps):
+    sims = []
+    for mol in mols:
+        fp = Chem.RDKFingerprint(mol)
+        s = DataStructs.BulkTanimotoSimilarity(fp, ref_fps)
+        sims.append(max(s))
+    distance = [1 - x for x in sims]
+    return distance

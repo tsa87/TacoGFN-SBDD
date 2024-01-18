@@ -38,6 +38,18 @@ _SAVE_FOLDER = flags.DEFINE_string(
     "Path to save the generated molecules.",
 )
 
+_SAMPLE_TEMP = flags.DEFINE_float(
+    "sample_temp",
+    1.0,
+    "Temperature for sampling.",
+)
+
+_COMMENT = flags.DEFINE_string(
+    "comment",
+    "",
+    "Comment for the experiment.",
+)
+
 
 def main() -> None:
     flags.FLAGS(sys.argv)
@@ -47,6 +59,8 @@ def main() -> None:
 
     trail.model.load_state_dict(model_state["models_state_dict"][0])
     trail.model.eval()
+    trail.model.to("cuda")
+    trail.ctx.device = "cuda"
 
     test_idxs = trail.pharmaco_db.get_partition_idxs("test")
 
@@ -62,9 +76,7 @@ def main() -> None:
         all_mols = []
         all_preds = []
         for size in batch_sizes:
-            mols = trail.sample_molecules(
-                [idx] * size,
-            )
+            mols = trail.sample_molecules([idx] * size, sample_temp=_SAMPLE_TEMP.value)
             preds = trail.task.predict_docking_score(
                 mols, torch.tensor([idx] * size)
             ).tolist()
@@ -73,7 +85,7 @@ def main() -> None:
             all_preds.extend(preds)
 
         end = time.time()
-        smiles = [Chem.MolToSmiles(mol) for mol in mols]
+        smiles = [Chem.MolToSmiles(mol) for mol in all_mols]
 
         pdb_id = trail.pharmaco_db.idx_to_id[idx]
         results[pdb_id] = {
@@ -87,7 +99,7 @@ def main() -> None:
 
     save_path = os.path.join(
         _SAVE_FOLDER.value,
-        f"{today_date}_{exp_name}_{_NUM_PER_POCKET.value}_per_pocket.json",
+        f"{today_date}_temp_{_SAMPLE_TEMP.value}_{_COMMENT.value}.json",
     )
 
     with open(save_path, "w") as f:
