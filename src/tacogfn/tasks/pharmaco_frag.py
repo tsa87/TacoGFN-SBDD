@@ -201,18 +201,14 @@ class PharmacophoreTask(GFNTask):
             pharmacophore_ids.tolist()
         )
         avg_preds = torch.as_tensor(
-            [self.avg_prediction_for_pocket[pdb_id] for pdb_id in pdb_ids]
+            [self.avg_prediction_for_pocket[pdb_id] for pdb_id in pdb_ids],
+            dtype=torch.float,
         )
-
-        print(f"avg_preds: {avg_preds}")
-        print(f"preds: {preds}")
 
         preds[preds.isnan()] = 0
         affinity_reward = (preds - avg_preds).clip(-15, 0) + torch.max(
             preds, avg_preds
         ) * self.cfg.task.pharmaco_frag.leaky_coefficient  # leaky reward up to avg
-
-        print(f"affinity_reward: {affinity_reward}")
 
         affinity_reward *= -1 / 10.0  # normalize reward to be in range [0, 1]
         affinity_reward = affinity_reward.clip(0, 1)
@@ -475,7 +471,7 @@ def main():
         "log_dir": "./logs/20240118-alpha-default-0.6-qed-sa-limit-5.0-docking-cutoff-0.2-leaky",
         "split_file": "dataset/split_by_name.pt",
         "affinity_predictor_path": "model_weights/base_100_per_pocket.pth",
-        "avg_prediction_for_pocket_path": "model_weights/avg_for_base_100_per_pocket.pt",
+        "avg_prediction_for_pocket_path": "model_weights/avg_scores/avg_for_base_100_per_pocket.pt",
         "pharmacophore_db_path": "misc/pharmacophores_db.lmdb",
         "device": "cuda" if torch.cuda.is_available() else "cpu",
         "overwrite_existing_exp": True,
