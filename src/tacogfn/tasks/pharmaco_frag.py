@@ -456,7 +456,7 @@ class PharmacophoreTrainer(StandardOnlineTrainer):
 def main():
     """Example of how this model can be run."""
     hps = {
-        "log_dir": "./logs/20240118-alpha-default-qed-sa-limit-more-random",
+        "log_dir": "./logs/20240118-alpha-default-0.8-qed-sa-limit",
         "split_file": "dataset/split_by_name.pt",
         "affinity_predictor_path": "model_weights/base_100_per_pocket.pth",
         "pharmacophore_db_path": "misc/pharmacophores_db.lmdb",
@@ -486,8 +486,8 @@ def main():
                 "min_docking_score": 0,  # no reward below this
                 "leaky_coefficient": 0.0,
                 "reward_multiplier": 1.0,
-                "max_qed_reward": 0.6,  # no extra reward for qed above this
-                "max_sa_reward": 0.6,  # no extra reward for sa above this
+                "max_qed_reward": 0.8,  # no extra reward for qed above this
+                "max_sa_reward": 0.8,  # no extra reward for sa above this
                 "objectives": ["docking", "qed", "sa"],
             },
         },
