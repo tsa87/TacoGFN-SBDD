@@ -456,7 +456,7 @@ class PharmacophoreTrainer(StandardOnlineTrainer):
 def main():
     """Example of how this model can be run."""
     hps = {
-        "log_dir": "./logs/20240118-alpha-default-qed-sa-limit",
+        "log_dir": "./logs/20240118-alpha-default-qed-sa-limit-more-nodes",
         "split_file": "dataset/split_by_name.pt",
         "affinity_predictor_path": "model_weights/base_100_per_pocket.pth",
         "pharmacophore_db_path": "misc/pharmacophores_db.lmdb",
@@ -470,7 +470,7 @@ def main():
         "algo": {
             "sampling_tau": 0.99,
             "offline_ratio": 0.0,
-            "max_nodes": 9,
+            "max_nodes": 16,
             "train_random_action_prob": 0.01,
         },
         "cond": {
