@@ -86,6 +86,7 @@ class Config:
     split_file: str = MISSING
     pharmacophore_db_path: str = MISSING
     affinity_predictor_path: str = MISSING
+    avg_prediction_for_pocket_path: str = MISSING
     seed: int = 0
     validate_every: int = 1000
     checkpoint_every: Optional[int] = None
