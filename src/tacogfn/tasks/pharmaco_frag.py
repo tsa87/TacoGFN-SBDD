@@ -198,7 +198,7 @@ class PharmacophoreTask(GFNTask):
         affinity_reward = (preds - self.cfg.task.pharmaco_frag.min_docking_score).clip(
             -15, 0
         ) + torch.max(
-            preds, self.cfg.task.pharmaco_frag.min_docking_score
+            preds, torch.tensor(self.cfg.task.pharmaco_frag.min_docking_score)
         ) * self.cfg.task.pharmaco_frag.leaky_coefficient  # leaky reward up to min_docking_score
         affinity_reward *= -1 / 10.0  # normalize reward to be in range [0, 1]
         affinity_reward = affinity_reward.clip(0, 1)
