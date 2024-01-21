@@ -1,6 +1,6 @@
 dataset/
 misc/*
-model_weights/*.tar
+model_weights/*
 
 tools/
 src/logs

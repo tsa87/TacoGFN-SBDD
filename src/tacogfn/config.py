@@ -84,9 +84,10 @@ class Config:
     logger: str = "wandb"  # "wandb" or "tensorboard"
     device: str = "cuda"
     split_file: str = MISSING
-    pharmacophore_db_path: str = MISSING
-    affinity_predictor_path: str = MISSING
-    avg_prediction_for_pocket_path: str = MISSING
+    pharmaco_db: str = MISSING
+    dock_pharmaco: str = MISSING
+    dock_proxy: str = MISSING
+    avg_score: str = MISSING
     seed: int = 0
     validate_every: int = 1000
     checkpoint_every: Optional[int] = None
