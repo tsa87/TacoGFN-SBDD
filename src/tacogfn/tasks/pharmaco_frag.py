@@ -257,9 +257,13 @@ class PharmacophoreTask(GFNTask):
             "diversity": diversity,
         }
         if self.cfg.info_only_dock_proxy:
-            infos["info_only_docking_score"] = self.predict_docking_score(
+            info_preds = self.predict_docking_score(
                 mols, pharmacophore_ids, info_only=True
             )
+            info_preds[info_preds.isnan()] = 0
+            infos["info_only_docking_score"] = info_preds
+        else:
+            infos["info_only_docking_score"] = preds
 
         return (FlatRewards(reward), is_valid, infos)
 
