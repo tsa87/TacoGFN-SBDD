@@ -18,6 +18,10 @@ conda env create -f environment.yml
 
 2. Download dataset
 ```bash
+(if local)
+tar -czvf tacogfn_data.tar.gz dataset/split_by_name.pt model_weights/ dataset/pocket_to_avg_zinc_vina_score.pt misc/pharmacophores_db.lmdb/ dataset/affinity_prediction_pharmacophores/
+
+
 pip install gdown
 gdown --id 1Mdg3eIhXube6TpctjPBUN5JVFDvkxNRO
 tar -xvzf tacogfn_data.tar.gz

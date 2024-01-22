@@ -15,7 +15,7 @@
         "lr_decay": 20000
     },
     "algo": {
-        "sampling_tau": 0.95,
+        "sampling_tau": 0.99,
         "offline_ratio": 0.0,
         "max_nodes": 9,
         "train_random_action_prob": 0.01
@@ -35,6 +35,7 @@
             "affinity_predictor": "alpha",
             "leaky_coefficient": 0.2,
             "reward_multiplier": 3.0,
+            "max_dock_reward": -5.0,
             "objectives": [
                 "docking"
             ]

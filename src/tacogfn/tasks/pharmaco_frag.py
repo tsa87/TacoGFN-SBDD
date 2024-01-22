@@ -205,7 +205,12 @@ class PharmacophoreTask(GFNTask):
             pharmacophore_ids.tolist()
         )
         avg_preds = torch.as_tensor(
-            [self.avg_prediction_for_pocket[pdb_id] for pdb_id in pdb_ids],
+            [
+                min(0, self.avg_prediction_for_pocket[pdb_id])
+                if pdb_id in self.avg_prediction_for_pocket
+                else -7.0
+                for pdb_id in pdb_ids
+            ],
             dtype=torch.float,
         )
 
@@ -216,7 +221,9 @@ class PharmacophoreTask(GFNTask):
             preds, avg_preds
         ) * self.cfg.task.pharmaco_frag.leaky_coefficient  # leaky reward up to avg
 
-        affinity_reward *= -1 / 10.0  # normalize reward to be in range [0, 1]
+        affinity_reward /= (
+            self.cfg.task.pharmaco_frag.max_dock_reward
+        )  # still normalize reward to be in range [0, 1]
         affinity_reward = affinity_reward.clip(0, 1)
 
         # 1 for qed above 0.7, linear decay to 0 from 0.7 to 0.0
