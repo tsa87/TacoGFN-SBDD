@@ -210,7 +210,9 @@ class PharmacophoreTask(GFNTask):
         )
 
         preds[preds.isnan()] = 0
-        affinity_reward = (preds - avg_preds).clip(-15, 0) + torch.max(
+        affinity_reward = (preds - avg_preds).clip(
+            self.cfg.task.pharmaco_frag.max_dock_reward, 0
+        ) + torch.max(
             preds, avg_preds
         ) * self.cfg.task.pharmaco_frag.leaky_coefficient  # leaky reward up to avg
 
@@ -220,15 +222,21 @@ class PharmacophoreTask(GFNTask):
         # 1 for qed above 0.7, linear decay to 0 from 0.7 to 0.0
         qeds = torch.as_tensor([Descriptors.qed(mol) for mol in mols])
 
-        qed_reward = (
-            qeds.clip(0.0, self.cfg.task.pharmaco_frag.max_qed_reward)
-            / self.cfg.task.pharmaco_frag.max_qed_reward
+        qed_reward = torch.pow(
+            (
+                qeds.clip(0.0, self.cfg.task.pharmaco_frag.max_qed_reward)
+                / self.cfg.task.pharmaco_frag.max_qed_reward
+            ),
+            self.cfg.task.pharmaco_frag.qed_exponent,
         )
 
         sas = torch.as_tensor([(10 - sascore.calculateScore(mol)) / 9 for mol in mols])
-        sa_reward = (
-            sas.clip(0.0, self.cfg.task.pharmaco_frag.max_sa_reward)
-            / self.cfg.task.pharmaco_frag.max_sa_reward
+        sa_reward = torch.pow(
+            (
+                sas.clip(0.0, self.cfg.task.pharmaco_frag.max_sa_reward)
+                / self.cfg.task.pharmaco_frag.max_sa_reward
+            ),
+            self.cfg.task.pharmaco_frag.sa_exponent,
         )
 
         # 1 until 300 then linear decay to 0 until 1000
