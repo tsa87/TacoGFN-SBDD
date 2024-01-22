@@ -18,33 +18,37 @@ conda env create -f environment.yml
 
 2. Download dataset
 ```bash
-(if local)
+(if creating the compressed file)
 tar -czvf tacogfn_data.tar.gz dataset/split_by_name.pt model_weights/ dataset/pocket_to_avg_zinc_vina_score.pt misc/pharmacophores_db.lmdb/ dataset/affinity_prediction_pharmacophores/
 
-
+(otherwise)
+cd tacogfn
 pip install gdown
 gdown --id 1Mdg3eIhXube6TpctjPBUN5JVFDvkxNRO
 tar -xvzf tacogfn_data.tar.gz
 ```
 
-3. Compute pharmacophore models
-```bash
-```
-
-4. Install MolVoxel
+3. Install MolVoxel
 ```bash
 (Changing this because an error)
 cd src/molvoxel
 pip install -e .
 ```
 
-4. Install ADFR for Docking
+4. Train
+```bash
+conda activate tacogfn
+python3 src/tacogfn/tasks/pharmaco_frag.py --hps_path hps/???
+```
+
+
+6. Install ADFR for Docking (Optional)
 ```bash
 chmod +x scripts/setup_adfr_suite.sh
 ./setup_adfr.sh
 ```
 
-5. Export relevant paths 
+6. Export relevant paths 
 ```bash
 export PYTHONPATH="$(pwd)/src:$PYTHONPATH"
 
