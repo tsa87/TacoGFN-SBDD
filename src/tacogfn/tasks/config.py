@@ -31,6 +31,7 @@ class PharmacoFragTaskConfig:
     max_dock_reward: float = -5 # no extra reward for docking gap above this
     leaky_coefficient: float = 0.2  # 0.0 means no leaky reward for docking score
     reward_multiplier: float = 1.0
+    ablation: str = "none" #[no_pharmaco, pocket_graph]
     objectives: List[str] = field(default_factory=lambda: ["docking", "qed", "sa"])
 
 

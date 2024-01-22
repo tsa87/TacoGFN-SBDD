@@ -318,13 +318,18 @@ class PharmacophoreTrainer(StandardOnlineTrainer):
         return mols
 
     def setup_model(self):
-        self.model = (
-            pharmaco_cond_graph_transformer.PharmacophoreConditionalGraphTransformerGFN(
+        if self.cfg.task.pharmaco_frag.ablation == "no_pharmaco":
+            self.model = pharmaco_cond_graph_transformer.NoPharmacophoreConditionalGraphTransformerGFN(
                 self.ctx,
                 self.cfg,
                 do_bck=self.cfg.algo.tb.do_parameterize_p_b,
             )
-        )
+        else:
+            self.model = pharmaco_cond_graph_transformer.PharmacophoreConditionalGraphTransformerGFN(
+                self.ctx,
+                self.cfg,
+                do_bck=self.cfg.algo.tb.do_parameterize_p_b,
+            )
 
     def setup_algo(self):
         self.algo = PharmacophoreTrajectoryBalance(
