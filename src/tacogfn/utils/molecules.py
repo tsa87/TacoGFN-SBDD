@@ -278,9 +278,3 @@ def compute_novelty(mols, ref_fps):
         sims.append(max(s))
     distance = [1 - x for x in sims]
     return distance
-<<<<<<< HEAD
-
-
-
-=======
->>>>>>> origin/main

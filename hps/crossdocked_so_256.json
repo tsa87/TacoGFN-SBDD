@@ -3,6 +3,8 @@
     "split_file": "dataset/split_by_name.pt",
     "dock_proxy": "model_weights/crossdocked_dim_256.pth",
     "dock_pharmaco": "dataset/docking_pharmacophores/crossdocked_dim_256",
+    "info_only_dock_proxy": "model_weights/zinc_1000_dim_128.pth",
+    "info_only_dock_pharmaco": "dataset/affinity_prediction_pharmacophores/zinc_1000_dim_128",
     "avg_score": "dataset/pocket_to_avg_zinc_vina_score.pt",
     "pharmaco_db": "misc/pharmacophores_db.lmdb",
     "device": "cuda",

@@ -3,15 +3,13 @@ import os
 import pathlib
 import shutil
 import socket
+import sys
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
 import torch_geometric.loader as gl
-<<<<<<< HEAD
 from absl import flags
-=======
->>>>>>> origin/main
 from rdkit import Chem
 from rdkit.Chem import Descriptors
 from rdkit.Chem.rdchem import Mol as RDMol
@@ -74,15 +72,15 @@ class PharmacophoreTask(GFNTask):
         if self.cfg.task.pharmaco_frag.affinity_predictor == "alpha":
             from src.scoring.scoring_module import AffinityPredictor
 
-<<<<<<< HEAD
             self.affinity_model = AffinityPredictor(self.cfg.dock_proxy, "cpu")
+            # This is typically a stronger proxy used for information rather than training
+            if self.cfg.info_only_dock_proxy:
+                self.info_only_affinity_model = AffinityPredictor(
+                    self.cfg.info_only_dock_proxy, "cpu"
+                )
+                assert self.cfg.info_only_dock_pharmaco is not None
 
             self.avg_prediction_for_pocket = torch.load(self.cfg.avg_score)
-=======
-            self.affinity_model = AffinityPredictor(
-                self.cfg.affinity_predictor_path, "cpu"
-            )
->>>>>>> origin/main
 
             return {}
 
@@ -96,11 +94,7 @@ class PharmacophoreTask(GFNTask):
             self.molecule_featurizer = PretrainedDGLTransformer(
                 kind="gin_supervised_contextpred", dtype=float
             )
-<<<<<<< HEAD
             model_state = torch.load(self.cfg.dock_proxy)
-=======
-            model_state = torch.load(self.cfg.affinity_predictor_path)
->>>>>>> origin/main
             model = DockingScorePredictionModel(
                 hidden_dim=model_state["hps"]["hidden_dim"]
             )
@@ -161,45 +155,37 @@ class PharmacophoreTask(GFNTask):
         self,
         mols: List[RDMol],
         pharmacophore_ids: Tensor,
+        info_only=False,
     ) -> Tensor:
+        if info_only:
+            affinity_model = self.info_only_affinity_model
+            dock_pharmaco_folder = self.cfg.info_only_dock_pharmaco
+        else:
+            affinity_model = self.affinity_model
+            dock_pharmaco_folder = self.cfg.dock_pharmaco
+
         smi_list = [Chem.MolToSmiles(mol) for mol in mols]
+        pdb_ids = self.pharmacophore_dataset.get_keys_from_idxs(
+            pharmacophore_ids.tolist()
+        )
+        preds = []
+        for smi, pdb_id in zip(smi_list, pdb_ids):
+            try:
+                cache = torch.load(
+                    os.path.join(dock_pharmaco_folder, f"{pdb_id}_rec.pt"),
+                    map_location="cpu",
+                )
+                preds.append(affinity_model.scoring(cache, smi))
+            except FileNotFoundError:
+                print(os.path.join(dock_pharmaco_folder, f"{pdb_id}_rec.pt"))
+                print(f"Could not find pharmacophore for {pdb_id}")
+                preds.append(np.nan)
+            except Exception as e:
+                print(e)
+                print(smi)
+                preds.append(np.nan)
 
-        if self.cfg.task.pharmaco_frag.affinity_predictor == "alpha":
-            pdb_ids = self.pharmacophore_dataset.get_keys_from_idxs(
-                pharmacophore_ids.tolist()
-            )
-            preds = []
-            for smi, pdb_id in zip(smi_list, pdb_ids):
-                try:
-                    cache = torch.load(
-                        f"dataset/docking_pharmacophores/{pdb_id}_rec.pt",
-                        map_location="cpu",
-                    )
-                    preds.append(self.affinity_model.scoring(cache, smi))
-                except FileNotFoundError:
-                    print(f"Could not find pharmacophore for {pdb_id}")
-                    preds.append(np.nan)
-                except Exception as e:
-                    print(e)
-                    print(smi)
-                    preds.append(np.nan)
-
-            return torch.as_tensor(preds)
-
-        elif self.cfg.task.pharmaco_frag.affinity_predictor == "beta":
-            pharmacophore_list = [
-                self.pharmacophore_dataset.get_pharmacophore_data_from_idx(p_id)
-                for i, p_id in enumerate(pharmacophore_ids.tolist())
-            ]
-
-            all_preds = []
-            for batch in self.prepare_beta_batch(smi_list, pharmacophore_list):
-                batch = {k: v.to(self.device) for k, v in batch.items()}
-                preds = self.models["affinity"](batch).reshape((-1,)).cpu().detach()
-                all_preds.append(preds)
-
-            preds = torch.cat(all_preds)
-            return preds
+        return torch.as_tensor(preds)
 
     def compute_flat_rewards(
         self,
@@ -214,7 +200,7 @@ class PharmacophoreTask(GFNTask):
         pharmacophore_ids = pharmacophore_ids[is_valid]
 
         preds = self.predict_docking_score(mols, pharmacophore_ids)
-<<<<<<< HEAD
+
         pdb_ids = self.pharmacophore_dataset.get_keys_from_idxs(
             pharmacophore_ids.tolist()
         )
@@ -234,19 +220,6 @@ class PharmacophoreTask(GFNTask):
         # 1 for qed above 0.7, linear decay to 0 from 0.7 to 0.0
         qeds = torch.as_tensor([Descriptors.qed(mol) for mol in mols])
 
-=======
-
-        preds[preds.isnan()] = 0
-        affinity_reward = (preds - self.cfg.task.pharmaco_frag.min_docking_score).clip(
-            -15, 0
-        ) + preds * self.cfg.task.pharmaco_frag.leaky_coefficient  # leaky reward
-        affinity_reward *= -1 / 10.0  # normalize reward to be in range [0, 1]
-        affinity_reward = affinity_reward.clip(0, 1)
-
-        # 1 for qed above 0.7, linear decay to 0 from 0.7 to 0.0
-        qeds = torch.as_tensor([Descriptors.qed(mol) for mol in mols])
-
->>>>>>> origin/main
         qed_reward = (
             qeds.clip(0.0, self.cfg.task.pharmaco_frag.max_qed_reward)
             / self.cfg.task.pharmaco_frag.max_qed_reward
@@ -275,17 +248,20 @@ class PharmacophoreTask(GFNTask):
             reward *= mw
 
         reward = self.flat_reward_transform(reward).clip(1e-4, 100).reshape((-1, 1))
-        return (
-            FlatRewards(reward),
-            is_valid,
-            {
-                "docking_score": preds,
-                "qed": qeds,
-                "sa": sas,
-                "mw": mw,
-                "diversity": diversity,
-            },
-        )
+
+        infos = {
+            "docking_score": preds,
+            "qed": qeds,
+            "sa": sas,
+            "mw": mw,
+            "diversity": diversity,
+        }
+        if self.cfg.info_only_dock_proxy:
+            infos["info_only_docking_score"] = self.predict_docking_score(
+                mols, pharmacophore_ids, info_only=True
+            )
+
+        return (FlatRewards(reward), is_valid, infos)
 
 
 class PharmacophoreTrainer(StandardOnlineTrainer):
