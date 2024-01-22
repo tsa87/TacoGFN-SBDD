@@ -1,3 +1,4 @@
+import json
 import os
 import pathlib
 import shutil
@@ -7,6 +8,10 @@ from typing import Callable, Dict, List, Optional, Tuple, Union
 import numpy as np
 import torch
 import torch_geometric.loader as gl
+<<<<<<< HEAD
+from absl import flags
+=======
+>>>>>>> origin/main
 from rdkit import Chem
 from rdkit.Chem import Descriptors
 from rdkit.Chem.rdchem import Mol as RDMol
@@ -28,6 +33,12 @@ from src.tacogfn.online_trainer import StandardOnlineTrainer
 from src.tacogfn.trainer import FlatRewards, GFNTask, RewardScalar
 from src.tacogfn.utils import molecules, sascore
 from src.tacogfn.utils.conditioning import TemperatureConditional
+
+_HPS_PATH = flags.DEFINE_string(
+    "hps_path",
+    "hps/crossdocked_mol_256.json",
+    "Path to the hyperparameter file.",
+)
 
 
 class PharmacophoreTask(GFNTask):
@@ -63,9 +74,15 @@ class PharmacophoreTask(GFNTask):
         if self.cfg.task.pharmaco_frag.affinity_predictor == "alpha":
             from src.scoring.scoring_module import AffinityPredictor
 
+<<<<<<< HEAD
+            self.affinity_model = AffinityPredictor(self.cfg.dock_proxy, "cpu")
+
+            self.avg_prediction_for_pocket = torch.load(self.cfg.avg_score)
+=======
             self.affinity_model = AffinityPredictor(
                 self.cfg.affinity_predictor_path, "cpu"
             )
+>>>>>>> origin/main
 
             return {}
 
@@ -79,7 +96,11 @@ class PharmacophoreTask(GFNTask):
             self.molecule_featurizer = PretrainedDGLTransformer(
                 kind="gin_supervised_contextpred", dtype=float
             )
+<<<<<<< HEAD
+            model_state = torch.load(self.cfg.dock_proxy)
+=======
             model_state = torch.load(self.cfg.affinity_predictor_path)
+>>>>>>> origin/main
             model = DockingScorePredictionModel(
                 hidden_dim=model_state["hps"]["hidden_dim"]
             )
@@ -193,6 +214,27 @@ class PharmacophoreTask(GFNTask):
         pharmacophore_ids = pharmacophore_ids[is_valid]
 
         preds = self.predict_docking_score(mols, pharmacophore_ids)
+<<<<<<< HEAD
+        pdb_ids = self.pharmacophore_dataset.get_keys_from_idxs(
+            pharmacophore_ids.tolist()
+        )
+        avg_preds = torch.as_tensor(
+            [self.avg_prediction_for_pocket[pdb_id] for pdb_id in pdb_ids],
+            dtype=torch.float,
+        )
+
+        preds[preds.isnan()] = 0
+        affinity_reward = (preds - avg_preds).clip(-15, 0) + torch.max(
+            preds, avg_preds
+        ) * self.cfg.task.pharmaco_frag.leaky_coefficient  # leaky reward up to avg
+
+        affinity_reward *= -1 / 10.0  # normalize reward to be in range [0, 1]
+        affinity_reward = affinity_reward.clip(0, 1)
+
+        # 1 for qed above 0.7, linear decay to 0 from 0.7 to 0.0
+        qeds = torch.as_tensor([Descriptors.qed(mol) for mol in mols])
+
+=======
 
         preds[preds.isnan()] = 0
         affinity_reward = (preds - self.cfg.task.pharmaco_frag.min_docking_score).clip(
@@ -204,6 +246,7 @@ class PharmacophoreTask(GFNTask):
         # 1 for qed above 0.7, linear decay to 0 from 0.7 to 0.0
         qeds = torch.as_tensor([Descriptors.qed(mol) for mol in mols])
 
+>>>>>>> origin/main
         qed_reward = (
             qeds.clip(0.0, self.cfg.task.pharmaco_frag.max_qed_reward)
             / self.cfg.task.pharmaco_frag.max_qed_reward
@@ -312,7 +355,7 @@ class PharmacophoreTrainer(StandardOnlineTrainer):
         cfg.algo.offline_ratio = 0
         cfg.model.num_emb = 128
         cfg.model.num_layers = 4
-        cfg.model.pharmaco_cond.pharmaco_dim = 64
+        cfg.model.pharmaco_cond.pharmaco_dim = 128
 
         cfg.algo.method = "TB"
         cfg.algo.max_nodes = 9
@@ -442,7 +485,7 @@ class PharmacophoreTrainer(StandardOnlineTrainer):
         test_ids = [tuple_to_pharmaco_id(t) for t in split_file["test"]]
 
         return PharmacoDB(
-            self.cfg.pharmacophore_db_path,
+            self.cfg.pharmaco_db,
             {"train": train_ids, "test": test_ids},
             rng=np.random.default_rng(142857),
             verbose=True,
@@ -455,50 +498,10 @@ class PharmacophoreTrainer(StandardOnlineTrainer):
 
 def main():
     """Example of how this model can be run."""
-    hps = {
-        "log_dir": "./logs/2024_01_16_run_pharmaco_frag_alpha_mw_only",
-        "split_file": "dataset/split_by_name.pt",
-        "affinity_predictor_path": "model_weights/base_100_per_pocket.pth",
-        "pharmacophore_db_path": "misc/pharmacophores_db.lmdb",
-        "device": "cuda" if torch.cuda.is_available() else "cpu",
-        "overwrite_existing_exp": True,
-        "num_training_steps": 50_000,
-        "num_workers": 0,
-        "opt": {
-            "lr_decay": 20000,
-        },
-        "algo": {
-            "sampling_tau": 0.99,
-            "offline_ratio": 0.0,
-            "max_nodes": 12,
-            "train_random_action_prob": 0.01,
-        },
-        "cond": {
-            "temperature": {
-                "sample_dist": "uniform",
-                "dist_params": [0, 64.0],
-            }
-        },
-        "task": {
-            "pharmaco_frag": {
-                "fragment_type": "zinc250k_50cutoff_brics",
-                "affinity_predictor": "alpha",
-                "min_docking_score": 0,  # no reward below this
-                "leaky_coefficient": 0.0,
-                "reward_multiplier": 1.0,
-                "max_qed_reward": 0.6,  # no extra reward for qed above this
-                "max_sa_reward": 0.6,  # no extra reward for sa above this
-                "objectives": ["docking", "qed", "sa"],
-            },
-        },
-        "model": {
-            "pharmaco_cond": {
-                "pharmaco_dim": 128,
-            },
-            "num_emb": 256,
-            "num_layers": 2,
-        },
-    }
+    flags.FLAGS(sys.argv)
+    with open(_HPS_PATH.value, "r") as f:
+        hps = json.load(f)
+
     if os.path.exists(hps["log_dir"]):
         if hps["overwrite_existing_exp"]:
             shutil.rmtree(hps["log_dir"])

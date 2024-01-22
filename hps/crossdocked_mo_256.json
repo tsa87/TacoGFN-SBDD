@@ -1,0 +1,52 @@
+{
+    "log_dir": "./logs/20240121-crossdocked-mo-256",
+    "split_file": "dataset/split_by_name.pt",
+    "dock_proxy": "model_weights/crossdocked_dim_256.pth",
+    "dock_pharmaco": "dataset/docking_pharmacophores/crossdocked_dim_256",
+    "avg_score": "dataset/pocket_to_avg_zinc_vina_score.pt",
+    "pharmaco_db": "misc/pharmacophores_db.lmdb",
+    "device": "cuda",
+    "overwrite_existing_exp": true,
+    "num_training_steps": 50000,
+    "num_workers": 8,
+    "opt": {
+        "lr_decay": 20000
+    },
+    "algo": {
+        "sampling_tau": 0.95,
+        "offline_ratio": 0.0,
+        "max_nodes": 9,
+        "train_random_action_prob": 0.01
+    },
+    "cond": {
+        "temperature": {
+            "sample_dist": "uniform",
+            "dist_params": [
+                0,
+                64.0
+            ]
+        }
+    },
+    "task": {
+        "pharmaco_frag": {
+            "fragment_type": "zinc250k_50cutoff_brics",
+            "affinity_predictor": "alpha",
+            "leaky_coefficient": 0.2,
+            "reward_multiplier": 3.0,
+            "max_qed_reward": 0.7,
+            "max_sa_reward": 0.8,
+            "objectives": [
+                "docking",
+                "qed",
+                "sa"
+            ]
+        }
+    },
+    "model": {
+        "pharmaco_cond": {
+            "pharmaco_dim": 128
+        },
+        "num_emb": 256,
+        "num_layers": 2
+    }
+}
