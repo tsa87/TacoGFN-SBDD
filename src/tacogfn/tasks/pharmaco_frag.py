@@ -8,7 +8,10 @@ from typing import Callable, Dict, List, Optional, Tuple, Union
 import numpy as np
 import torch
 import torch_geometric.loader as gl
+<<<<<<< HEAD
 from absl import flags
+=======
+>>>>>>> origin/main
 from rdkit import Chem
 from rdkit.Chem import Descriptors
 from rdkit.Chem.rdchem import Mol as RDMol
@@ -71,9 +74,15 @@ class PharmacophoreTask(GFNTask):
         if self.cfg.task.pharmaco_frag.affinity_predictor == "alpha":
             from src.scoring.scoring_module import AffinityPredictor
 
+<<<<<<< HEAD
             self.affinity_model = AffinityPredictor(self.cfg.dock_proxy, "cpu")
 
             self.avg_prediction_for_pocket = torch.load(self.cfg.avg_score)
+=======
+            self.affinity_model = AffinityPredictor(
+                self.cfg.affinity_predictor_path, "cpu"
+            )
+>>>>>>> origin/main
 
             return {}
 
@@ -87,7 +96,11 @@ class PharmacophoreTask(GFNTask):
             self.molecule_featurizer = PretrainedDGLTransformer(
                 kind="gin_supervised_contextpred", dtype=float
             )
+<<<<<<< HEAD
             model_state = torch.load(self.cfg.dock_proxy)
+=======
+            model_state = torch.load(self.cfg.affinity_predictor_path)
+>>>>>>> origin/main
             model = DockingScorePredictionModel(
                 hidden_dim=model_state["hps"]["hidden_dim"]
             )
@@ -201,6 +214,7 @@ class PharmacophoreTask(GFNTask):
         pharmacophore_ids = pharmacophore_ids[is_valid]
 
         preds = self.predict_docking_score(mols, pharmacophore_ids)
+<<<<<<< HEAD
         pdb_ids = self.pharmacophore_dataset.get_keys_from_idxs(
             pharmacophore_ids.tolist()
         )
@@ -220,6 +234,19 @@ class PharmacophoreTask(GFNTask):
         # 1 for qed above 0.7, linear decay to 0 from 0.7 to 0.0
         qeds = torch.as_tensor([Descriptors.qed(mol) for mol in mols])
 
+=======
+
+        preds[preds.isnan()] = 0
+        affinity_reward = (preds - self.cfg.task.pharmaco_frag.min_docking_score).clip(
+            -15, 0
+        ) + preds * self.cfg.task.pharmaco_frag.leaky_coefficient  # leaky reward
+        affinity_reward *= -1 / 10.0  # normalize reward to be in range [0, 1]
+        affinity_reward = affinity_reward.clip(0, 1)
+
+        # 1 for qed above 0.7, linear decay to 0 from 0.7 to 0.0
+        qeds = torch.as_tensor([Descriptors.qed(mol) for mol in mols])
+
+>>>>>>> origin/main
         qed_reward = (
             qeds.clip(0.0, self.cfg.task.pharmaco_frag.max_qed_reward)
             / self.cfg.task.pharmaco_frag.max_qed_reward
