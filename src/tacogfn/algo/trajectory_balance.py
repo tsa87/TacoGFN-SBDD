@@ -1354,27 +1354,28 @@ class PocketTrajectoryBalance(TrajectoryBalance):
         # Forward pass of the model, returns a GraphActionCategorical representing the forward
         # policy P_F, optionally a backward policy P_B, and per-graph outputs (e.g. F(s) in SubTB).
         molecule_batch = batch
-        pharmacophore_repeated_list = [pocket_list[i] for i in batch_idx]
-        pocket_batch = gd.Batch.from_data_list(pharmacophore_repeated_list).to(dev)
+        pocket_repeated_list = [pocket_list[i] for i in batch_idx]
+        pocket_repeated_batch = gd.Batch.from_data_list(pocket_repeated_list).to(dev)
 
         if self.cfg.do_parameterize_p_b:
             fwd_cat, bck_cat, per_graph_out = model(
-                molecule_batch, pocket_batch, cond_info[batch_idx]
+                molecule_batch, pocket_repeated_batch, cond_info[batch_idx]
             )
         else:
             if self.model_is_autoregressive:
                 fwd_cat, per_graph_out = model(
-                    molecule_batch, pocket_batch, cond_info, batched=True
+                    molecule_batch, pocket_repeated_batch, cond_info, batched=True
                 )
             else:
                 fwd_cat, per_graph_out = model(
-                    molecule_batch, pocket_batch, cond_info[batch_idx]
+                    molecule_batch, pocket_repeated_batch, cond_info[batch_idx]
                 )
         # Retreive the reward predictions for the full graphs,
         # i.e. the final graph of each trajectory
         log_reward_preds = per_graph_out[final_graph_idx, 0]
         # Compute trajectory balance objective
 
+        pocket_batch = gd.Batch.from_data_list(pocket_list).to(dev)
         log_Z = model.compute_logZ(
             cond_info,
             pocket_batch,
