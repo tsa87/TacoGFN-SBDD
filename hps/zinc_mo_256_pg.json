@@ -1,14 +1,15 @@
 {
-    "log_dir": "./logs/20240121-zinc-mo-256-no-pharmaco",
+    "log_dir": "./logs/20240121-zinc-mo-256-pocket-graph",
     "split_file": "dataset/split_by_name.pt",
     "dock_proxy": "model_weights/zinc_1000_dim_256.pth",
     "dock_pharmaco": "dataset/affinity_prediction_pharmacophores/zinc_1000_dim_256",
     "avg_score": "dataset/pocket_to_avg_zinc_vina_score.pt",
     "pharmaco_db": "misc/pharmacophores_db.lmdb",
+    "pocket_db": "misc/pocket_db.lmdb",
     "device": "cuda",
     "overwrite_existing_exp": true,
     "num_training_steps": 50000,
-    "num_workers": 8,
+    "num_workers": 0,
     "opt": {
         "lr_decay": 20000
     },
@@ -38,7 +39,7 @@
             "max_sa_reward": 0.8,
             "qed_exponent": 1.0,
             "sa_exponent": 1.0,
-            "ablation": "no_pharmaco",
+            "ablation": "pocket_graph",
             "objectives": [
                 "docking",
                 "qed",

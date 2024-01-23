@@ -2,30 +2,24 @@ from rdkit import Chem
 
 from src.tacogfn.data import pharmacophore
 from src.tacogfn.data.pharmacophore import PharmacoDB
+from src.tacogfn.data.pocket import PocketDB
 from src.tacogfn.envs import frag_mol_env
 from src.tacogfn.tasks.seh_frag import SOME_MOLS
 
 
 def get_example_pharmacophore_datalist():
     db = PharmacoDB("../misc/pharmacophores_db.lmdb")
+    ids = db.all_id[:10]
+    keys = db.get_idxs_from_keys(ids)
+    data_list = db.get_datalist_from_idxs(keys)
+    return data_list
 
-    ids = [
-        "1a0q",
-        "1a0t",
-        "1a1b",
-        "1a1c",
-        "1a1e",
-        "1a2c",
-        "1a3e",
-        "1a4g",
-        "1a4h",
-        "1a4k",
-    ]
 
-    pharmacophores = [db.get_pharmacophore(id) for id in ids]
-
-    data_list = pharmacophore.PharmacophoreGraphDataset(pharmacophores)
-
+def get_example_pockets():
+    db = PocketDB("../misc/pocket_db.lmdb")
+    ids = db.all_id[:10]
+    keys = db.get_idxs_from_keys(ids)
+    data_list = db.get_from_idxs(keys)
     return data_list
 
 

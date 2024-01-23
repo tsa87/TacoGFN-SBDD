@@ -41,13 +41,14 @@ class GVP_embedding(nn.Module):
         edge_h_dim,
         seq_in=False,
         num_layers=3,
+        vocab_size=NUM_INTERACTION_TYPES,
         drop_rate=0.1,
     ):
         super(GVP_embedding, self).__init__()
 
         if seq_in:
-            self.W_s = nn.Embedding(NUM_INTERACTION_TYPES, NUM_INTERACTION_TYPES)
-            node_in_dim = (node_in_dim[0] + NUM_INTERACTION_TYPES, node_in_dim[1])
+            self.W_s = nn.Embedding(vocab_size, vocab_size)
+            node_in_dim = (node_in_dim[0] + vocab_size, node_in_dim[1])
 
         self.W_v = nn.Sequential(
             LayerNorm(node_in_dim),

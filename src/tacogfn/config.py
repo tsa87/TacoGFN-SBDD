@@ -85,6 +85,7 @@ class Config:
     device: str = "cuda"
     split_file: str = MISSING
     pharmaco_db: str = MISSING
+    pocket_db: Optional[str] = None
     dock_pharmaco: str = MISSING
     dock_proxy: str = MISSING
     avg_score: str = MISSING

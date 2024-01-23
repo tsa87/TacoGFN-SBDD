@@ -187,7 +187,7 @@ class PharmacoDB:
             for key, ids in self.id_partition.items():
                 print(f"loaded {len(ids)} ids for {key}")
 
-    def add_pharmacophores(self, paths: list[str], keys: list[str]):
+    def add_data(self, paths: list[str], keys: list[str]):
         """Take a list of pharmacophore paths and keys and add them to the database."""
         env = lmdb.open(self.db_path, create=False, map_size=int(1e11))
 
@@ -212,7 +212,7 @@ class PharmacoDB:
     def get_partition_idxs(self, partition: str) -> list[int]:
         return self.get_idxs_from_keys(self.get_partition_keys(partition))
 
-    def get_pharmacophore(self, key: str) -> PharmacophoreModel:
+    def get(self, key: str) -> PharmacophoreModel:
         """Get a pharmacophore from the database by key."""
         with self.env.begin(write=False) as txn:
             serialized_data = txn.get(key.encode())
@@ -224,25 +224,23 @@ class PharmacoDB:
         model.__setstate__(data)
         return model
 
-    def get_pharmacophore_from_idx(self, idx: int) -> PharmacophoreModel:
-        return self.get_pharmacophore(self.idx_to_id[idx])
+    def get_from_idx(self, idx: int) -> PharmacophoreModel:
+        return self.get(self.idx_to_id[idx])
 
-    def get_pharmacophore_datalist_from_idxs(
+    def get_data_from_idx(self, idx: int) -> PharmacophoreGraphDataset:
+        return PharmacophoreGraphDataset([self.get_from_idx(idx)])[0]
+
+    def get_data_from_id(self, pdb_id: str) -> PharmacophoreGraphDataset:
+        return PharmacophoreGraphDataset([self.get(pdb_id)])[0]
+
+    def get_datalist_from_idxs(
         self, idxs: Union[list[int], torch.Tensor]
     ) -> PharmacophoreGraphDataset:
         if isinstance(idxs, torch.Tensor):
             idxs = idxs.tolist()
-        return PharmacophoreGraphDataset(
-            [self.get_pharmacophore_from_idx(idx) for idx in idxs]
-        )
+        return PharmacophoreGraphDataset([self.get_from_idx(idx) for idx in idxs])
 
-    def get_pharmacophore_data_from_idx(self, idx: int) -> PharmacophoreGraphDataset:
-        return PharmacophoreGraphDataset([self.get_pharmacophore_from_idx(idx)])[0]
-
-    def get_pharmacophore_data_from_id(self, pdb_id: str) -> PharmacophoreGraphDataset:
-        return PharmacophoreGraphDataset([self.get_pharmacophore(pdb_id)])[0]
-
-    def sample_pharmacophore_idx(self, n: int, partition=None) -> list[int]:
+    def sample_idx(self, n: int, partition=None) -> list[int]:
         if partition is None:
             pharmacophore_ids = self.rng.choice(
                 self.all_id,
@@ -254,9 +252,6 @@ class PharmacoDB:
                 self.id_partition[partition], size=n, replace=True
             )
         return [self.id_to_idx[pdb_id] for pdb_id in pharmacophore_ids]
-
-    def get_pharmacophore_list(self, keys: list[str]) -> list[PharmacophoreModel]:
-        return [self.get_pharmacophore(key) for key in keys]
 
     def get_keys(self):
         env = lmdb.open(self.db_path, create=False)

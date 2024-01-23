@@ -16,13 +16,17 @@ from rdkit.Chem.rdchem import Mol as RDMol
 from torch import Tensor, nn
 from torch.utils.data import DataLoader, Dataset
 
-from src.tacogfn.algo.trajectory_balance import PharmacophoreTrajectoryBalance
+from src.tacogfn.algo.trajectory_balance import (
+    PharmacophoreTrajectoryBalance,
+    PocketTrajectoryBalance,
+)
 from src.tacogfn.config import Config
 from src.tacogfn.data.pharmacophore import (
     PharmacoDB,
     PharmacophoreGraphDataset,
     PharmacophoreModel,
 )
+from src.tacogfn.data.pocket import PocketDB
 from src.tacogfn.data.sampling_iterator import PharmacoCondSamplingIterator
 from src.tacogfn.envs import frag_mol_env
 from src.tacogfn.eval.models.baseline import BaseAffinityPrediction
@@ -52,7 +56,7 @@ class PharmacophoreTask(GFNTask):
     def __init__(
         self,
         dataset: Dataset,
-        pharmacophore_dataset: PharmacophoreGraphDataset,
+        pharmaco_dataset: PharmacophoreGraphDataset,
         cfg: Config,
         rng: np.random.Generator = None,
         wrap_model: Callable[[nn.Module], nn.Module] = None,
@@ -61,7 +65,7 @@ class PharmacophoreTask(GFNTask):
         self.rng = rng
         self.cfg = cfg
         self.dataset = dataset
-        self.pharmacophore_dataset = pharmacophore_dataset
+        self.pharmaco_dataset = pharmaco_dataset
 
         self.temperature_conditional = TemperatureConditional(cfg, rng)
         self.num_cond_dim = self.temperature_conditional.encoding_size()
@@ -113,9 +117,7 @@ class PharmacophoreTask(GFNTask):
         train_it: int,
         partition: str,
     ) -> Dict[str, Tensor]:
-        pharmacophore_idxs = self.pharmacophore_dataset.sample_pharmacophore_idx(
-            n, partition=partition
-        )
+        pharmacophore_idxs = self.pharmaco_dataset.sample_idx(n, partition=partition)
         cond_info = self.temperature_conditional.sample(n)
         cond_info["pharmacophore"] = torch.as_tensor(pharmacophore_idxs)
         return cond_info
@@ -165,9 +167,7 @@ class PharmacophoreTask(GFNTask):
             dock_pharmaco_folder = self.cfg.dock_pharmaco
 
         smi_list = [Chem.MolToSmiles(mol) for mol in mols]
-        pdb_ids = self.pharmacophore_dataset.get_keys_from_idxs(
-            pharmacophore_ids.tolist()
-        )
+        pdb_ids = self.pharmaco_dataset.get_keys_from_idxs(pharmacophore_ids.tolist())
         preds = []
         for smi, pdb_id in zip(smi_list, pdb_ids):
             try:
@@ -201,9 +201,7 @@ class PharmacophoreTask(GFNTask):
 
         preds = self.predict_docking_score(mols, pharmacophore_ids)
 
-        pdb_ids = self.pharmacophore_dataset.get_keys_from_idxs(
-            pharmacophore_ids.tolist()
-        )
+        pdb_ids = self.pharmaco_dataset.get_keys_from_idxs(pharmacophore_ids.tolist())
         avg_preds = torch.as_tensor(
             [
                 min(0, self.avg_prediction_for_pocket[pdb_id])
@@ -324,6 +322,14 @@ class PharmacophoreTrainer(StandardOnlineTrainer):
                 self.cfg,
                 do_bck=self.cfg.algo.tb.do_parameterize_p_b,
             )
+        elif self.cfg.task.pharmaco_frag.ablation == "pocket_graph":
+            self.model = (
+                pharmaco_cond_graph_transformer.PocketConditionalGraphTransformerGFN(
+                    self.ctx,
+                    self.cfg,
+                    do_bck=self.cfg.algo.tb.do_parameterize_p_b,
+                )
+            )
         else:
             self.model = pharmaco_cond_graph_transformer.PharmacophoreConditionalGraphTransformerGFN(
                 self.ctx,
@@ -332,13 +338,24 @@ class PharmacophoreTrainer(StandardOnlineTrainer):
             )
 
     def setup_algo(self):
-        self.algo = PharmacophoreTrajectoryBalance(
-            self.env,
-            self.ctx,
-            self.pharmaco_db,
-            self.rng,
-            self.cfg,
-        )
+        if self.cfg.task.pharmaco_frag.ablation == "pocket_graph":
+            self.algo = PocketTrajectoryBalance(
+                self.env,
+                self.ctx,
+                self.pocket_db,
+                self.pharmaco_db,
+                self.rng,
+                self.cfg,
+            )
+
+        else:
+            self.algo = PharmacophoreTrajectoryBalance(
+                self.env,
+                self.ctx,
+                self.pharmaco_db,
+                self.rng,
+                self.cfg,
+            )
 
     def set_default_hps(self, cfg: Config):
         cfg.hostname = socket.gethostname()
@@ -383,7 +400,7 @@ class PharmacophoreTrainer(StandardOnlineTrainer):
     def setup_task(self):
         self.task = PharmacophoreTask(
             dataset=self.training_data,
-            pharmacophore_dataset=self.pharmaco_db,
+            pharmaco_dataset=self.pharmaco_db,
             cfg=self.cfg,
             rng=self.rng,
             wrap_model=self._wrap_for_mp,
@@ -477,22 +494,31 @@ class PharmacophoreTrainer(StandardOnlineTrainer):
             prefetch_factor=1 if self.cfg.num_workers else 2,
         )
 
-    def setup_pharamaco_dataset(self):
+    def setup_conditioning_dataset(self):
         split_file = torch.load(self.cfg.split_file)
         tuple_to_pharmaco_id = lambda t: t[0].split("/")[-1].split("_rec")[0]
 
         train_ids = [tuple_to_pharmaco_id(t) for t in split_file["train"]]
         test_ids = [tuple_to_pharmaco_id(t) for t in split_file["test"]]
 
-        return PharmacoDB(
+        self.pharmaco_db = PharmacoDB(
             self.cfg.pharmaco_db,
             {"train": train_ids, "test": test_ids},
             rng=np.random.default_rng(142857),
             verbose=True,
         )
 
+        if self.cfg.task.pharmaco_frag.ablation == "pocket_graph":
+            assert self.cfg.pocket_db is not None
+            self.pocket_db = PocketDB(
+                self.cfg.pocket_db,
+                {"train": train_ids, "test": test_ids},
+                rng=np.random.default_rng(142857),
+                verbose=True,
+            )
+
     def setup(self):
-        self.pharmaco_db = self.setup_pharamaco_dataset()
+        self.setup_conditioning_dataset()
         super().setup()
 
 
