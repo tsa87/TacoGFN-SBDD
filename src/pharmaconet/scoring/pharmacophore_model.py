@@ -49,7 +49,13 @@ class PharmacophoreModel:
     ):
         graph = DensityMapGraph(center, resolution, size)
         for node in density_maps:
-            graph.add_node(node["type"], node["coords"], node["score"], node["map"])
+            graph.add_node(
+                node["type"],
+                node["coords"],
+                node["score"],
+                node["map"],
+                node["feature"],
+            )
         graph.setup()
 
         model = cls()
@@ -203,6 +209,7 @@ class ModelNode:
         radius: float,
         neighbor_edge_dict: Dict[int, int],
         overlapped_nodes: List[int],
+        feature: Optional[NDArray] = None,
     ):
         self.graph: PharmacophoreModel = graph
         self.index: int = index
@@ -212,6 +219,7 @@ class ModelNode:
         self.score: float = score
         self.center: Tuple[float, float, float] = center
         self.radius: float = radius
+        self.feature: Optional[NDArray] = feature
 
         self._neighbor_edge_dict: Dict[int, int] = neighbor_edge_dict
         self._overlapped_nodes: List[int] = overlapped_nodes
@@ -244,6 +252,7 @@ class ModelNode:
                 for neighbor, edge in node.neighbor_edge_dict.items()
             },
             [node.index for node in node.overlapped_nodes],
+            node.feature,
         )
 
     def __hash__(self):
