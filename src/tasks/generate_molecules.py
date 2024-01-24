@@ -44,6 +44,12 @@ _SAMPLE_TEMP = flags.DEFINE_float(
     "Temperature for sampling.",
 )
 
+_BETA_TEMP = flags.DEFINE_float(
+    "beta_temp",
+    1.0,
+    "Temperature for beta.",
+)
+
 _COMMENT = flags.DEFINE_string(
     "comment",
     "",
@@ -76,7 +82,9 @@ def main() -> None:
         all_mols = []
         all_preds = []
         for size in batch_sizes:
-            mols = trail.sample_molecules([idx] * size, sample_temp=_SAMPLE_TEMP.value)
+            mols = trail.sample_molecules(
+                [idx] * size, sample_temp=_SAMPLE_TEMP.value, beta_temp=_BETA_TEMP.value
+            )
             preds = trail.task.predict_docking_score(
                 mols, torch.tensor([idx] * size)
             ).tolist()
@@ -99,7 +107,7 @@ def main() -> None:
 
     save_path = os.path.join(
         _SAVE_FOLDER.value,
-        f"{today_date}_temp_{_SAMPLE_TEMP.value}_{_COMMENT.value}.json",
+        f"{today_date}_sample_temp_{_SAMPLE_TEMP.value}_beta_temp_{_BETA_TEMP.value}_{_COMMENT.value}.json",
     )
 
     with open(save_path, "w") as f:

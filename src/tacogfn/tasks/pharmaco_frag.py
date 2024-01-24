@@ -289,14 +289,17 @@ class PharmacophoreTrainer(StandardOnlineTrainer):
         pharmacophore_idxs: list[int],
         temperatures: Optional[list[float]] = None,
         sample_temp: float = 1.0,
+        beta_temp: float = 1.0,  # 0 - 1
     ) -> List[RDMol]:
         n = len(pharmacophore_idxs)
 
         if temperatures is None:
             temperatures = (
-                torch.rand(n) * self.cfg.cond.temperature.dist_params[1] * 1 / 4
-                + torch.ones(n) * self.cfg.cond.temperature.dist_params[1] * 3 / 4
-            )  # default to sampling from the upper 3/4 of the temperature range
+                torch.rand(n)
+                * self.cfg.cond.temperature.dist_params[1]
+                * (1 - beta_temp)
+                + torch.ones(n) * self.cfg.cond.temperature.dist_params[1] * beta_temp
+            )
 
         cond_info = {
             "encoding": self.task.temperature_conditional.encode(temperatures),

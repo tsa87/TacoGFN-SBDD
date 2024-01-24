@@ -260,8 +260,6 @@ class PocketConditionalGraphTransformerGFN(graph_transformer.GraphTransformerGFN
             ln_type=cfg.model.graph_transformer.ln_type,
         )
 
-        print(env_ctx.num_cond_dim)
-        print(cfg.model.pharmaco_cond.pharmaco_dim)
         self.logZ = graph_transformer.mlp(
             env_ctx.num_cond_dim + cfg.model.pharmaco_cond.pharmaco_dim,
             num_emb * 2,
