@@ -26,6 +26,12 @@ _NUM_PER_POCKET = flags.DEFINE_integer(
     "Number of molecules to generate per pocket.",
 )
 
+_RETAIN_PER_POCKET = flags.DEFINE_integer(
+    "retain_per_pocket",
+    100,
+    "Number of molecules to retain per pocket.",
+)
+
 _BATCH_SIZE = flags.DEFINE_integer(
     "batch_size",
     50,
@@ -102,12 +108,20 @@ def main() -> None:
             "time": end - start,
         }
 
+        # Retain the top n molecules with lowest preds
+        top_n_indices = np.argsort(all_preds)[: _RETAIN_PER_POCKET.value]
+        top_n_smiles = [smiles[i] for i in top_n_indices]
+        top_n_preds = [all_preds[i] for i in top_n_indices]
+
+        results[pdb_id]["smiles"] = top_n_smiles
+        results[pdb_id]["preds"] = top_n_preds
+
     today_date = pd.Timestamp.today().strftime("%Y%m%d")
     exp_name = trail.cfg.log_dir.split("/")[-1]
 
     save_path = os.path.join(
         _SAVE_FOLDER.value,
-        f"{today_date}_sample_temp_{_SAMPLE_TEMP.value}_beta_temp_{_BETA_TEMP.value}_{_COMMENT.value}.json",
+        f"{today_date}_{_BETA_TEMP.value}_{_SAMPLE_TEMP.value}_{_NUM_PER_POCKET.value}_{_COMMENT.value}.json",
     )
 
     with open(save_path, "w") as f:

@@ -62,6 +62,10 @@ class PharmacophoreGraphDataset(data.Dataset):
                 device=self.device,
                 dtype=torch.long,
             )
+            features = torch.tensor(
+                np.array([node.feature for node in nodes]),
+                device=self.device,
+            )
             centroids = torch.tensor(
                 [node.center for node in nodes],
                 device=self.device,
@@ -128,6 +132,7 @@ class PharmacophoreGraphDataset(data.Dataset):
                     radii_rbf,  # 8
                     scores_therometer,  # 8
                     dist_to_hotspot_rbf,  # 8
+                    features,  # 192
                 ],
                 dim=-1,
             )

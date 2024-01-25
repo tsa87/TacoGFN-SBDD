@@ -6,7 +6,7 @@
     "info_only_dock_proxy": "model_weights/zinc_1000_dim_128.pth",
     "info_only_dock_pharmaco": "dataset/affinity_prediction_pharmacophores/zinc_1000_dim_128",
     "avg_score": "dataset/pocket_to_avg_zinc_vina_score.pt",
-    "pharmaco_db": "misc/pharmacophores_db.lmdb",
+    "pharmaco_db": "misc/new_pharmacophores_db.lmdb",
     "pocket_db": "misc/pocket_db.lmdb",
     "device": "cuda",
     "overwrite_existing_exp": true,
