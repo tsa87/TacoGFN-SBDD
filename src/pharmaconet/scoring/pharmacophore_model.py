@@ -266,6 +266,7 @@ class ModelNode:
             score=self.score,
             center=self.center,
             radius=self.radius,
+            feature=self.feature,
             neighbor_edge_dict=self._neighbor_edge_dict,
             overlapped_nodes=self._overlapped_nodes,
         )

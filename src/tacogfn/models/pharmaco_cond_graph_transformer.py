@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch_geometric.data as gd
-from torch_geometric.nn import global_add_pool
+from torch_geometric.nn import global_mean_pool
 from torch_scatter import scatter_mean
 
 from src.tacogfn.data.utils import hetero_batch_to_batch
@@ -29,7 +29,7 @@ class PharmacophoreConditionalGraphTransformer(nn.Module):
         super().__init__()
 
         self.pharmacophore_encoder = gvp_model.GVP_embedding(
-            (24, 1), (pharmacophore_dim, 16), (24, 1), (32, 1), seq_in=True
+            (216, 1), (pharmacophore_dim, 16), (24, 1), (32, 1), seq_in=True
         )
 
         self.graph_transformer = graph_transformer.GraphTransformer(
@@ -51,7 +51,7 @@ class PharmacophoreConditionalGraphTransformer(nn.Module):
             (pharmacophore.edge_s, pharmacophore.edge_v),
             pharmacophore.seq,
         )
-        graph_embeddings = global_add_pool(node_embeddings, pharmacophore.batch)
+        graph_embeddings = global_mean_pool(node_embeddings, pharmacophore.batch)
         return graph_embeddings
 
     def forward(self, mol_g: gd.Batch, pharmaco_g: gd.Batch, cond: torch.Tensor = None):
