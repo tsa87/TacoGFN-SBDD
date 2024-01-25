@@ -1,8 +1,10 @@
 {
-    "log_dir": "./logs/20240121-zinc-mo-256",
+    "log_dir": "./logs/20240121-crossdocked-mo-256-256",
     "split_file": "dataset/split_by_name.pt",
-    "dock_proxy": "model_weights/zinc_1000_dim_256.pth",
-    "dock_pharmaco": "dataset/affinity_prediction_pharmacophores/zinc_1000_dim_256",
+    "dock_proxy": "model_weights/crossdocked_dim_256.pth",
+    "dock_pharmaco": "dataset/affinity_prediction_pharmacophores/crossdocked_dim_256",
+    "info_only_dock_proxy": "model_weights/zinc_1000_dim_128.pth",
+    "info_only_dock_pharmaco": "dataset/affinity_prediction_pharmacophores/zinc_1000_dim_128",
     "avg_score": "dataset/pocket_to_avg_zinc_vina_score.pt",
     "pharmaco_db": "misc/new_pharmacophores_db.lmdb",
     "device": "cuda",
@@ -16,7 +18,8 @@
         "sampling_tau": 0.99,
         "offline_ratio": 0.0,
         "max_nodes": 9,
-        "train_random_action_prob": 0.01
+        "train_random_action_prob": 0.01,
+        "global_batch_size": 64
     },
     "cond": {
         "temperature": {
@@ -32,9 +35,9 @@
             "fragment_type": "zinc250k_50cutoff_brics",
             "affinity_predictor": "alpha",
             "leaky_coefficient": 0.2,
-            "reward_multiplier": 5.0,
+            "reward_multiplier": 3.0,
             "max_qed_reward": 0.7,
-            "max_dock_reward": -10.0,
+            "max_dock_reward": -5.0,
             "max_sa_reward": 0.8,
             "qed_exponent": 1.0,
             "sa_exponent": 1.0,
@@ -47,7 +50,7 @@
     },
     "model": {
         "pharmaco_cond": {
-            "pharmaco_dim": 128
+            "pharmaco_dim": 256
         },
         "num_emb": 256,
         "num_layers": 2
