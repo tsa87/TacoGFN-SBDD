@@ -1,5 +1,5 @@
 {
-    "log_dir": "./logs/20240121-zinc-mo-256",
+    "log_dir": "./logs/20240121-new-zinc-mo-256-256",
     "split_file": "dataset/split_by_name.pt",
     "dock_proxy": "model_weights/zinc_1000_dim_256.pth",
     "dock_pharmaco": "dataset/affinity_prediction_pharmacophores/zinc_1000_dim_256",
