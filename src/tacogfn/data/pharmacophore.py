@@ -166,25 +166,6 @@ class PharmacoDB:
         rng: np.random.Generator = None,
         verbose: bool = False,
     ):
-        # HACK: remove later
-        block_set = set(
-            [
-                "1a31_A",
-                "1byi_A",
-                "1seu_A",
-                "2gll_B",
-                "2glm_A",
-                "2rd0_A",
-                "3khj_B",
-                "3lsw_A",
-                "3zg3_A",
-                "4yi5_A",
-                "5gwi_A",
-                "5yil_B",
-                "6bdi_A",
-            ]
-        )
-
         self.db_path = db_path
         self.verbose = verbose
 
@@ -197,8 +178,7 @@ class PharmacoDB:
             meminit=False,
         )
 
-        all_id = self.get_keys()
-        self.all_id = [key for key in all_id if key not in block_set]
+        self.all_id = self.get_keys()
 
         self.id_to_idx = {id: i for i, id in enumerate(self.all_id)}
         self.idx_to_id = {i: id for i, id in enumerate(self.all_id)}
@@ -289,13 +269,20 @@ class PharmacoDB:
     def _purge_none_data(self):
         """Remove all pharmacophores that are None."""
         counter = 0
-        env = lmdb.open(self.db_path, create=False)
+        env = lmdb.open(self.db_path, create=False, map_size=int(1e13))
 
         with env.begin(write=True) as txn:
             for key, value in tqdm(txn.cursor()):
                 if value is None:
                     txn.delete(key)
                     counter += 1
+                else:
+                    try:
+                        self.get_data_from_id(key.decode())
+                    except Exception as e:
+                        print(e)
+                        txn.delete(key)
+                        counter += 1
 
         print(f"Removed {counter} pharmacophores.")
         env.close()
