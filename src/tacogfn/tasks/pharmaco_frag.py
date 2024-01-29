@@ -159,7 +159,7 @@ class PharmacophoreTask(GFNTask):
         pharmacophore_ids: Tensor,
         info_only=False,
     ) -> Tensor:
-        if info_only:
+        if info_only and self.cfg.info_only_dock_proxy:
             affinity_model = self.info_only_affinity_model
             dock_pharmaco_folder = self.cfg.info_only_dock_pharmaco
         else:

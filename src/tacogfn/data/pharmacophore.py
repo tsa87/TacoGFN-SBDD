@@ -62,10 +62,16 @@ class PharmacophoreGraphDataset(data.Dataset):
                 device=self.device,
                 dtype=torch.long,
             )
-            features = torch.tensor(
-                np.array([node.feature for node in nodes]),
-                device=self.device,
-            )
+            if nodes[0].feature is None:
+                features = torch.zeros(
+                    (len(nodes), 192),
+                    device=self.device,
+                )
+            else:
+                features = torch.tensor(
+                    np.array([node.feature for node in nodes]),
+                    device=self.device,
+                )
             centroids = torch.tensor(
                 [node.center for node in nodes],
                 device=self.device,

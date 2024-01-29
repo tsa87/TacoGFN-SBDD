@@ -92,7 +92,7 @@ def main() -> None:
                 [idx] * size, sample_temp=_SAMPLE_TEMP.value, beta_temp=_BETA_TEMP.value
             )
             preds = trail.task.predict_docking_score(
-                mols, torch.tensor([idx] * size)
+                mols, torch.tensor([idx] * size), info_only=True
             ).tolist()
 
             all_mols.extend(mols)

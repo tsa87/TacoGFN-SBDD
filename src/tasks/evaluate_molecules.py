@@ -108,8 +108,8 @@ def main() -> None:
         centroid = pocket_to_centroid[pocket]
         native_docking_score = pocket_to_score[pocket]
 
-        time = val["time"]
-        preds = val["preds"]
+        # time = val["time"]
+        # preds = val["preds"]
         smiles = val["smiles"][: _MOLS_PER_POCKET.value]
         mols = [Chem.MolFromSmiles(smi) for smi in smiles]
 
@@ -119,20 +119,28 @@ def main() -> None:
         novelty = molecules.compute_novelty(mols, ref_fps)
 
         evaluated_results[pocket] = {
-            "time": time,
+            # "time": time,
             "smiles": smiles,
             "qeds": qeds,
             "sas": sas,
-            "preds": preds,
+            # "preds": preds,
             "diversity": diversity,
             "novelty": novelty,
             "centroid": centroid,
             "native_docking_score": native_docking_score,
         }
 
-        if _DOCK.value:
-            docking_scores = compute_docking_scores(pocket, smiles, centroid)
-            evaluated_results[pocket]["docking_scores"] = docking_scores
+        if "time" in val.keys():
+            evaluated_results[pocket]["time"] = val["time"]
+        if "preds" in val.keys():
+            evaluated_results[pocket]["preds"] = val["preds"]
+
+        if "docking_scores" in val.keys():
+            evaluated_results[pocket]["docking_scores"] = val["docking_scores"]
+        else:
+            if _DOCK.value:
+                docking_scores = compute_docking_scores(pocket, smiles, centroid)
+                evaluated_results[pocket]["docking_scores"] = docking_scores
 
     filename = Path(_MOLECULES_PATH.value.split("/")[-1]).stem
     save_path = os.path.join(_RESULTS_FOLDER.value, f"{filename}_evaluated.json")
