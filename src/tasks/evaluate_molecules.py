@@ -108,8 +108,6 @@ def main() -> None:
         centroid = pocket_to_centroid[pocket]
         native_docking_score = pocket_to_score[pocket]
 
-        # time = val["time"]
-        # preds = val["preds"]
         smiles = val["smiles"][: _MOLS_PER_POCKET.value]
         mols = [Chem.MolFromSmiles(smi) for smi in smiles]
 

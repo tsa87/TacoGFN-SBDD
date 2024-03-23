@@ -82,13 +82,11 @@ class PocketDB(pharmacophore.PharmacoDB):
         id_partition: dict[str, list[str]] = None,
         rng: np.random.Generator = None,
         verbose: bool = False,
-        pocket_radius=20,
         setting="pocket center",
     ):
         super().__init__(db_path, id_partition, rng, verbose)
 
         self.add_noise_to_com = False
-        self.pocket_radius = pocket_radius
         self.setting = setting
 
         self.letter_to_num = LETTER_TO_NUM

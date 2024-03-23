@@ -54,22 +54,7 @@ DATE=20240128
 # MODEL_PATHS["/home/tsa87/refactor-tacogfn/logs/20240121-new-crossdocked-mo-256-256/model_state_31000.pt"]="new-crossdocked-mo-256-256"
 # MODEL_PATHS["/home/tsa87/refactor-tacogfn/logs/20240121-new-zinc-mo-256-128/model_state_39000.pt"]="new-zinc-mo-256-128-39000"
 # MODEL_PATHS["/home/tsa87/refactor-tacogfn/logs/20240121-zinc-mo-256-pocket-graph/model_state_39000.pt"]="zinc-mo-256-pocket-graph-39000"
-MODEL_PATHS["/home/tsa87/refactor-tacogfn/logs/20240121-zinc-mo-256-no-pharmaco/model_state_25000.pt"]="zinc-mo-256-no-pharmaco"
-REPLATES=(1)
-for MODEL_PATH in "${!MODEL_PATHS[@]}"; do
-    COMMENT_PREFIX=${MODEL_PATHS[$MODEL_PATH]}
-    for REPLATE in "${REPLATES[@]}"; do
-        # Generate molecules
-        python3 src/tasks/generate_molecules.py \
-            --model_path "$MODEL_PATH" \
-            --comment "${COMMENT_PREFIX}-${REPLATE}"
-
-        # Evaluate molecules
-        python3 src/tasks/evaluate_molecules.py \
-            --molecules_path "/home/tsa87/refactor-tacogfn/misc/generated_molecules/${DATE}_1.0_100_${COMMENT_PREFIX}-${REPLATE}.json"
-    done
-done
-
+# MODEL_PATHS["/home/tsa87/refactor-tacogfn/logs/20240121-zinc-mo-256-no-pharmaco/model_state_25000.pt"]="zinc-mo-256-no-pharmaco"
 # REPLATES=(1)
 # for MODEL_PATH in "${!MODEL_PATHS[@]}"; do
 #     COMMENT_PREFIX=${MODEL_PATHS[$MODEL_PATH]}
@@ -77,14 +62,39 @@ done
 #         # Generate molecules
 #         python3 src/tasks/generate_molecules.py \
 #             --model_path "$MODEL_PATH" \
-#             --num_per_pocket 500 \
 #             --comment "${COMMENT_PREFIX}-${REPLATE}"
 
 #         # Evaluate molecules
 #         python3 src/tasks/evaluate_molecules.py \
-#             --molecules_path "/home/tsa87/refactor-tacogfn/misc/generated_molecules/${DATE}_1.0_500_${COMMENT_PREFIX}-${REPLATE}.json"
+#             --molecules_path "/home/tsa87/refactor-tacogfn/misc/generated_molecules/${DATE}_1.0_100_${COMMENT_PREFIX}-${REPLATE}.json"
 #     done
 # done
+
+MODEL_PATHS["/home/tsa87/refactor-tacogfn/logs/20240121-crossdocked-mo-256-pocket_graph/model_state_26000.pt"]="crossdocked-mo-256-pocket-graph"
+MODEL_PATHS["/home/tsa87/refactor-tacogfn/logs/20240121-zinc-mo-256-pocket-graph/model_state_39000.pt"]="zinc-mo-256-pocket-graph-39000"
+
+python3 src/tasks/generate_molecules.py \
+    --model_path "/home/tsa87/refactor-tacogfn/logs/20240121-crossdocked-mo-256-pocket_graph/model_state_26000.pt" \
+    --comment "crossdocked-mo-256-pocket-graph-1"
+
+python3 src/tasks/evaluate_molecules.py \
+    --molecules_path "/home/tsa87/refactor-tacogfn/misc/generated_molecules/${DATE}_1.0_1.0_100_crossdocked-mo-256-pocket-graph-1.json"
+
+REPLATES=(1)
+for MODEL_PATH in "${!MODEL_PATHS[@]}"; do
+    COMMENT_PREFIX=${MODEL_PATHS[$MODEL_PATH]}
+    for REPLATE in "${REPLATES[@]}"; do
+        # Generate molecules
+        python3 src/tasks/generate_molecules.py \
+            --model_path "$MODEL_PATH" \
+            --num_per_pocket 500 \
+            --comment "${COMMENT_PREFIX}-${REPLATE}"
+
+        # Evaluate molecules
+        python3 src/tasks/evaluate_molecules.py \
+            --molecules_path "/home/tsa87/refactor-tacogfn/misc/generated_molecules/${DATE}_1.0_1.0_500_${COMMENT_PREFIX}-${REPLATE}.json"
+    done
+done
 
 
 

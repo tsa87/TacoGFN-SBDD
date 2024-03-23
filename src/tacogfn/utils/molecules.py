@@ -2,7 +2,10 @@ import numpy as np
 from Bio.PDB import PDBParser
 from openbabel import pybel
 from rdkit import Chem, DataStructs
-from rdkit.Chem import AllChem
+from rdkit.Chem import AllChem, Descriptors
+from rdkit.Chem.Draw import rdMolDraw2D
+
+from src.tacogfn.utils import molecules, sascore
 
 
 def convert_pdb_to_sdf(pdb_file: str, sdf_file: str) -> None:
@@ -26,16 +29,16 @@ def sdf_to_single_smiles(sdf_file: str) -> str:
             return smiles
 
 
-def write_sdf_from_smile(smi: str, sdf_path: str):
+def write_sdf_from_smile(smiles: str, sdf_path: str):
     """Write an SDF file from a SMILES string."""
-    mol = Chem.MolFromSmiles(smi)
+    mol = Chem.MolFromSmiles(smiles)
     mol = Chem.AddHs(mol)
-
-    AllChem.EmbedMolecule(mol, AllChem.ETKDG())
-
-    writer = Chem.SDWriter(sdf_path)
-    writer.write(mol)
-    writer.close()
+    param = AllChem.srETKDGv3()
+    param.seed = 0
+    AllChem.EmbedMolecule(mol, param)
+    mol = Chem.RemoveHs(mol)
+    with Chem.SDWriter(sdf_path) as w:
+        w.write(mol)
 
 
 def add_implicit_hydrogens_to_sdf(
@@ -260,6 +263,16 @@ def transform_sdf(
         writer.close()
 
 
+def evaluate_properties(mols, ref_fps):
+    qeds = [Descriptors.qed(mol) for mol in mols]
+    sas = [(10 - sascore.calculateScore(mol)) / 9 for mol in mols]
+    return {
+        "qeds": qeds,
+        "sas": sas,
+        "novelty": compute_novelty(mols, ref_fps),
+    }
+
+
 def compute_diversity(mols):
     diversity = []
     fps = [Chem.RDKFingerprint(mol) for mol in mols]
@@ -278,3 +291,17 @@ def compute_novelty(mols, ref_fps):
         sims.append(max(s))
     distance = [1 - x for x in sims]
     return distance
+
+
+def molecule_to_svg(mol, full_path, width=300, height=300):
+    # Render high resolution molecule
+    drawer = rdMolDraw2D.MolDraw2DSVG(width, height)
+    drawer.drawOptions().bondLineWidth = 2  # Set the bond line width
+    drawer.DrawMolecule(mol)
+    drawer.FinishDrawing()
+
+    # Export to high-resolutions SVG file
+    # save SVG to file
+    svg = drawer.GetDrawingText()
+    with open(full_path, "w") as f:
+        f.write(svg)

@@ -17,6 +17,12 @@ _EVAL_PATH = flags.DEFINE_string(
     "Path to the generated molecules.",
 )
 
+_NORMALIZE_DOCKING_SCORE = flags.DEFINE_boolean(
+    "normalize_docking_score",
+    False,
+    "Flag to indicate whether to compute normalized docking scores.",
+)
+
 
 def is_okay(qed, sas):
     if qed > 0.5 and sas > 0.5:
@@ -25,7 +31,7 @@ def is_okay(qed, sas):
 
 
 def is_novel_okay(novelty, qed, sas):
-    if novelty > 0.6 and qed > 0.5 and sas > 0.5:
+    if novelty > 0.5 and qed > 0.5 and sas > 0.5:
         return True
     return False
 
@@ -37,7 +43,7 @@ def is_hit(qed, sas, docking_score):
 
 
 def is_novel_hit(novelty, qed, sas, docking_score):
-    if novelty > 0.6 and qed > 0.5 and sas > 0.5 and docking_score < -8:
+    if novelty > 0.5 and qed > 0.5 and sas > 0.5 and docking_score < -8:
         return True
     return False
 
@@ -52,10 +58,13 @@ def main():
 
     dock = True if "docking_scores" in eval_data[next(iter(eval_data))] else False
 
-    not_enough_novel_molecules = []
-    not_enough_hit_molecules = []
+    not_enough_novel_okay_molecules = []
+    not_enough_okay_molecules = []
 
     for key, val in eval_data.items():
+        if len(val["qeds"]) == 0:
+            continue
+
         if "time" in val:
             all_vals["time"].append(val["time"])
         if "preds" in val:
@@ -71,6 +80,18 @@ def main():
                 v if (v is not None and v < 0) else 0 for v in val["docking_scores"]
             ]
             all_vals["docking_scores"].append(np.mean(val["docking_scores"]))
+
+            if _NORMALIZE_DOCKING_SCORE.value:
+                from rdkit import Chem
+
+                mols = [Chem.MolFromSmiles(smi) for smi in val["smiles"]]
+                mol_atoms = [mol.GetNumHeavyAtoms() for mol in mols]
+                val["normalized_docking_scores"] = [
+                    v / (a ** (1 / 3)) for v, a in zip(val["docking_scores"], mol_atoms)
+                ]
+                all_vals["normalized_docking_scores"].append(
+                    np.mean(val["normalized_docking_scores"])
+                )
 
             # COMPUTE HIT %
             hit_list = []
@@ -98,62 +119,69 @@ def main():
                     is_novel_okay(val["novelty"][i], val["qeds"][i], val["sas"][i])
                 )
 
-            all_vals["hit"].append(np.mean(hit_list))
-            all_vals["novel_hit"].append(np.mean(novel_hit_list))
+            all_vals["hit"].append(
+                np.mean(hit_list)
+            )  # proportion of molecules that are hits
+            all_vals["novel_hit"].append(
+                np.mean(novel_hit_list)
+            )  # proportion of molecules that are novel hits
 
-            # Compute top 5
+            # Compute top 10
             docking_scores = np.array(val["docking_scores"])
             sorted_indices = np.argsort(docking_scores)
 
-            # Compute top 5 docking scores
             all_vals["top_10_docking_scores"].append(
-                np.mean(docking_scores[sorted_indices[:5]])
+                np.mean(docking_scores[sorted_indices[:10]])
             )
 
-            # Compute top 5 hit docking scores
-            top_10_hit_docking_scores = []
+            # Compute top 10 hit docking scores
+            top_10_okay_docking_scores = []
             for i in range(len(sorted_indices)):
                 if is_okay_list[sorted_indices[i]]:
-                    top_10_hit_docking_scores.append(docking_scores[sorted_indices[i]])
-                if len(top_10_hit_docking_scores) == 10:
+                    top_10_okay_docking_scores.append(docking_scores[sorted_indices[i]])
+                if len(top_10_okay_docking_scores) == 10:
                     break
-            if len(top_10_hit_docking_scores) != 10:
-                not_enough_hit_molecules.append(key)
+            if len(top_10_okay_docking_scores) != 10:
+                not_enough_okay_molecules.append(key)
+                # Fill in the rest with 0s
+                for i in range(10 - len(top_10_okay_docking_scores)):
+                    top_10_okay_docking_scores.append(0)
 
-            if len(top_10_hit_docking_scores) > 0:
-                all_vals["top_10_hit_docking_scores"].append(
-                    np.mean(top_10_hit_docking_scores)
-                )
-            else:
-                all_vals["top_10_hit_docking_scores"].append(0)
-                # print(f"WARNING: Skipping {key} as it has no okay molecules.")
+            all_vals["top_10_okay_docking_scores"].append(
+                np.mean(top_10_okay_docking_scores)
+            )
 
-            # Compute top 5 novel hit docking scores
-            top_10_novel_docking_scores = []
+            top_10_novel_okay_docking_scores = []
             for i in range(len(sorted_indices)):
                 if is_novel_okay_list[sorted_indices[i]]:
-                    top_10_novel_docking_scores.append(
+                    top_10_novel_okay_docking_scores.append(
                         docking_scores[sorted_indices[i]]
                     )
-                if len(top_10_novel_docking_scores) == 10:
+                if len(top_10_novel_okay_docking_scores) == 10:
                     break
-            if len(top_10_novel_docking_scores) != 10:
-                not_enough_novel_molecules.append(key)
+            if len(top_10_novel_okay_docking_scores) != 10:
+                not_enough_novel_okay_molecules.append(key)
+                for i in range(10 - len(top_10_novel_okay_docking_scores)):
+                    top_10_novel_okay_docking_scores.append(0)
 
-            if len(top_10_novel_docking_scores) > 0:
-                all_vals["top_10_novel_docking_scores"].append(
-                    np.mean(top_10_novel_docking_scores)
-                )
-            else:
-                all_vals["top_10_novel_docking_scores"].append(0)
-                # print(f"WARNING: Skipping {key} as it has no novel okay molecules.")
+            all_vals["top_10_novel_okay_docking_scores"].append(
+                np.mean(top_10_novel_okay_docking_scores)
+            )
 
     table_data = []
     for key, val in all_vals.items():
         table_data.append([key, np.mean(val), np.median(val)])
 
-    print(f"Not enough novel and okay molecules: {not_enough_novel_molecules}")
-    print(f"Not enough okay molecules: {not_enough_hit_molecules}")
+    print("---------------------------------------------------------------------")
+    print("---------------------------------------------------------------------")
+    print(_EVAL_PATH.value)
+
+    print(
+        f"Not enough novel and okay molecules: {len(not_enough_novel_okay_molecules)} / {len(eval_data) } {len(not_enough_novel_okay_molecules) / len(eval_data)}"
+    )
+    print(
+        f"Not enough okay molecules: {len(not_enough_okay_molecules)} / {len(eval_data) } {len(not_enough_okay_molecules) / len(eval_data)}"
+    )
 
     table_headers = ["Key", "Mean", "Median"]
     table = tabulate(table_data, headers=table_headers, tablefmt="grid")

@@ -6,8 +6,12 @@ from typing import Optional
 
 from src.tacogfn.utils import molecules
 
-PREPARE_LIGAND_STUB = "mk_prepare_ligand.py"
-PREPARE_RECEPTOR_STUB = "prepare_receptor"
+PREP_LIG_FILE = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "docking_scripts/prepare_ligand.py"
+)
+PREP_REC_FILE = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "docking_scripts/prepare_receptor.py"
+)
 DOCKING_STUB = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "../../../tools/qvina2.1"
 )
@@ -18,8 +22,9 @@ def _prepare_ligand(
     output_ligand_pdbqt_path: str,
 ) -> None:
     command = (
-        [PREPARE_LIGAND_STUB]
-        + ["-i", input_ligand_sdf_path]
+        ["python3"]
+        + [PREP_LIG_FILE]
+        + [input_ligand_sdf_path]
         + ["-o", output_ligand_pdbqt_path]
     )
     subprocess.run(command)
@@ -30,8 +35,9 @@ def _prepare_receptor(
     output_receptor_pdbqt_path: str,
 ) -> None:
     command = (
-        [PREPARE_RECEPTOR_STUB]
-        + ["-r", input_receptor_pdb_path]
+        ["python3"]
+        + [PREP_REC_FILE]
+        + [input_receptor_pdb_path]
         + ["-o", output_receptor_pdbqt_path]
     )
     subprocess.run(command)
@@ -125,23 +131,32 @@ def compute_docking_score_from_smiles(
     score_only: bool = False,
     local_search: bool = False,
     center: Optional[tuple[float, float, float]] = None,
+    comment: str = "",
 ) -> float:
-    with tempfile.TemporaryDirectory() as temp_folder:
-        temp_lig_path = os.path.join(temp_folder, "original_ligand.sdf")
-        molecules.write_sdf_from_smile(smi, temp_lig_path)
+    if temp_folder is None:
+        temp_folder = tempfile.mkdtemp()
+    else:
+        if not os.path.exists(temp_folder):
+            os.makedirs(temp_folder)
 
-        return compute_docking_score_from_sdf(
-            pdb_path=pdb_path,
-            sdf_path=temp_lig_path,
-            temp_folder=temp_folder,
-            keep_temp_folder=keep_temp_folder,
-            box_size=box_size,
-            seed=seed,
-            exhaustiveness=exhaustiveness,
-            score_only=score_only,
-            local_search=local_search,
-            center=center,
-        )
+    temp_lig_path = os.path.join(temp_folder, "original_ligand.sdf")
+    molecules.write_sdf_from_smile(smi, temp_lig_path)
+
+    score = compute_docking_score_from_sdf(
+        pdb_path=pdb_path,
+        sdf_path=temp_lig_path,
+        temp_folder=temp_folder,
+        keep_temp_folder=keep_temp_folder,
+        box_size=box_size,
+        seed=seed,
+        exhaustiveness=exhaustiveness,
+        score_only=score_only,
+        local_search=local_search,
+        center=center,
+        comment=comment,
+    )
+
+    return score
 
 
 def compute_docking_score_from_sdf(
@@ -155,24 +170,26 @@ def compute_docking_score_from_sdf(
     score_only: bool = False,
     local_search: bool = False,
     center: Optional[tuple[float, float, float]] = None,
+    comment: str = "",
 ) -> float:
     if temp_folder is None:
         temp_folder = tempfile.mkdtemp()
     else:
         os.makedirs(temp_folder, exist_ok=True)
 
-    temp_lig_sdf_path = os.path.join(temp_folder, "ligand.sdf")
-    temp_lig_pdbqt_path = os.path.join(temp_folder, "ligand.pdbqt")
-    molecules.add_implicit_hydrogens_to_sdf(sdf_path, temp_lig_sdf_path)
+    temp_lig_sdf_path = os.path.join(temp_folder, f"ligand{comment}.sdf")
+    temp_lig_pdbqt_path = os.path.join(temp_folder, f"ligand{comment}.pdbqt")
+    # molecules.add_implicit_hydrogens_to_sdf(sdf_path, temp_lig_sdf_path)
+
     _prepare_ligand(
-        input_ligand_sdf_path=temp_lig_sdf_path,
+        input_ligand_sdf_path=sdf_path,
         output_ligand_pdbqt_path=temp_lig_pdbqt_path,
     )
 
     if pdb_path.endswith(".pdbqt"):
         temp_pocket_pdbqt_path = pdb_path
     else:
-        temp_pocket_pdbqt_path = os.path.join(temp_folder, "pocket.pdbqt")
+        temp_pocket_pdbqt_path = os.path.join(temp_folder, f"pocket{comment}.pdbqt")
         _prepare_receptor(
             input_receptor_pdb_path=pdb_path,
             output_receptor_pdbqt_path=temp_pocket_pdbqt_path,

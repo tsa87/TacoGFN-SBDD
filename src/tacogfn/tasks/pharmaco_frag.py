@@ -197,6 +197,7 @@ class PharmacophoreTask(GFNTask):
             return FlatRewards(torch.zeros((0, 1))), is_valid
 
         mols = [m for m, v in zip(mols, is_valid) if v]
+
         pharmacophore_ids = pharmacophore_ids[is_valid]
 
         preds = self.predict_docking_score(mols, pharmacophore_ids)
@@ -204,15 +205,18 @@ class PharmacophoreTask(GFNTask):
         pdb_ids = self.pharmaco_dataset.get_keys_from_idxs(pharmacophore_ids.tolist())
         avg_preds = torch.as_tensor(
             [
-                min(0, self.avg_prediction_for_pocket[pdb_id])
-                if pdb_id in self.avg_prediction_for_pocket
-                else -7.0
+                (
+                    min(0, self.avg_prediction_for_pocket[pdb_id])
+                    if pdb_id in self.avg_prediction_for_pocket
+                    else -7.0
+                )
                 for pdb_id in pdb_ids
             ],
             dtype=torch.float,
         )
 
         preds[preds.isnan()] = 0
+
         affinity_reward = (preds - avg_preds).clip(
             self.cfg.task.pharmaco_frag.max_dock_reward, 0
         ) + torch.max(
@@ -222,6 +226,13 @@ class PharmacophoreTask(GFNTask):
         affinity_reward /= (
             self.cfg.task.pharmaco_frag.max_dock_reward
         )  # still normalize reward to be in range [0, 1]
+        if self.cfg.task.pharmaco_frag.mol_adj != 0:
+            mol_atom_count = [m.GetNumHeavyAtoms() for m in mols]
+            mol_adj = torch.tensor(
+                [1 / c ** (self.cfg.task.pharmaco_frag.mol_adj) for c in mol_atom_count]
+            )
+            affinity_reward = affinity_reward * mol_adj
+
         affinity_reward = affinity_reward.clip(0, 1)
 
         # 1 for qed above 0.7, linear decay to 0 from 0.7 to 0.0
@@ -260,6 +271,7 @@ class PharmacophoreTask(GFNTask):
         if "mw" in self.cfg.task.pharmaco_frag.objectives:
             reward *= mw
 
+        reward *= 10  # make the reward more significant
         reward = self.flat_reward_transform(reward).clip(1e-4, 100).reshape((-1, 1))
 
         infos = {
