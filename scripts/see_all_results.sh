@@ -12,6 +12,8 @@ FILES=(
     "misc/evaluations/0_100_zinc-mo-256-pocket-graph-39000-3_evaluated.json" # ZINC
     "misc/evaluations/D_0_500_zinc-mo-256-pocket-graph-39000-1_evaluated.json" # ZINC Ranked
     "misc/evaluations/0_100_zinc-mo-256-no-pharmaco-1_evaluated.json" # ZINC No Pharmaco    
+    "misc/evaluations/E_0_100_crossdocked-mo-256-pocket_graph-adj_ds_evaluated.json" # Adj DS
+    "misc/evaluations/F_0_100_crossdocked-mo-256-pocket_graph-bigger-batch_evaluated.json" # Bigger Batch Crossdocked
     # "misc/evaluations/0_500_new-zinc-mo-256-128-39000-1_evaluated.json"
     # "misc/evaluations/0_100_zinc-mo-256-pocket-graph-3_evaluated.json"
     # "misc/evaluations/B_0_100_new-zinc-mo-256-128-39000-1_evaluated.json" 
