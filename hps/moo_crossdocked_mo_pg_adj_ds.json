@@ -29,14 +29,19 @@
                 0,
                 64.0
             ]
+        },
+        "weighted_prefs": {
+            "preference_type": "dirichlet"
+        },
+        "moo": {
+            "num_objectives": 3
         }
     },
     "task": {
         "pharmaco_frag": {
             "fragment_type": "zinc250k_50cutoff_brics",
             "affinity_predictor": "alpha",
-            "leaky_coefficient": 0.2,
-            "reward_multiplier": 3.0,
+            "leaky_coefficient": 0.5,
             "max_qed_reward": 0.7,
             "max_dock_reward": -5.0,
             "max_sa_reward": 0.8,

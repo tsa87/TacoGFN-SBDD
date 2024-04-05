@@ -93,6 +93,11 @@ def main():
                     np.mean(val["normalized_docking_scores"])
                 )
 
+            all_vals["all_docking_scores"] += val["docking_scores"]
+            all_vals["all_normalized_docking_scores"] += val[
+                "normalized_docking_scores"
+            ]
+
             # COMPUTE HIT %
             hit_list = []
             novel_hit_list = []
@@ -133,6 +138,13 @@ def main():
             all_vals["top_10_docking_scores"].append(
                 np.mean(docking_scores[sorted_indices[:10]])
             )
+
+            if _NORMALIZE_DOCKING_SCORE.value:
+                all_vals["top_10_normalized_docking_scores"].append(
+                    np.mean(
+                        np.array(val["normalized_docking_scores"])[sorted_indices[:10]]
+                    )
+                )
 
             # Compute top 10 hit docking scores
             top_10_okay_docking_scores = []

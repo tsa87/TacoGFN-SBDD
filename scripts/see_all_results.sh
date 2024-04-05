@@ -2,6 +2,7 @@
 
 # Array of file paths
 FILES=(
+    "misc/evaluations/archive/20240117_alpha_default_evaluated.json"
     "misc/evaluations/targetdiff_agg_data_evaluated.json"
     "misc/evaluations/pocket2mol_agg_data_evaluated.json"
     "misc/evaluations/decompdiff_subpocket_evaluated.json"
