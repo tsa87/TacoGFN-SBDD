@@ -4,6 +4,8 @@ Spotlighted in **_NeurIPS Workshop 2023 (GenBio | Generative AI and Biology)_** 
 
 Official Github for **_TacoGFN: Target Conditioned GFlowNet for Structure-based Drug Design_** by Tony Shen, Seonghwan Seo,  Grayson Lee, Mohit Pandey, Jason Smith, Artem Cherkasov, Woo Youn Kim and Martin Ester.
 
+![image](images/overview.png)
+
 We frame structure-based drug design as a Reinforcement Learning task, where the goal is to search the wider chemical space for
 molecules with desirable properties as opposed to fitting a training data distribution. We propose TacoGFN, a Generative Flow
 Network conditioned on protein pocket structure, using binding affinity, drug-likeliness and synthesizability measures as our reward. 
@@ -88,3 +90,17 @@ scores using QVina 2.1 first. Then you could call the following:
 ```bash
 python3 src/tasks/aggergate_evals.py --eval_path "$EVAL_FILE"
 ```
+
+### Citations
+```
+@misc{shen2024tacogfn,
+      title={TacoGFN: Target-conditioned GFlowNet for Structure-based Drug Design}, 
+      author={Tony Shen and Seonghwan Seo and Grayson Lee and Mohit Pandey and Jason R Smith and Artem Cherkasov and Woo Youn Kim and Martin Ester},
+      year={2024},
+      eprint={2310.03223},
+      archivePrefix={arXiv},
+      primaryClass={cs.LG}
+}
+```
+
+This project modifies [**GFlowNet library for graph and molecular data**](https://github.com/recursionpharma/gflownet).
