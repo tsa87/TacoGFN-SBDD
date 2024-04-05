@@ -1,4 +1,16 @@
-Official Github for "TacoGFN: Target Conditioned GFlowNet for Structure-based Drug Design"
+# TacoGFN: Target Conditioned GFlowNet for Structure-based Drug Design
+
+Spotlighted in **_NeurIPS Workshop 2023 (GenBio | Generative AI and Biology)_** [arxiv](https://arxiv.org/abs/2310.03223)
+
+Official Github for **_TacoGFN: Target Conditioned GFlowNet for Structure-based Drug Design_** by Tony Shen, Seonghwan Seo,  Grayson Lee, Mohit Pandey, Jason Smith, Artem Cherkasov, Woo Youn Kim and Martin Ester.
+
+We frame structure-based drug design as a Reinforcement Learning task, where the goal is to search the wider chemical space for
+molecules with desirable properties as opposed to fitting a training data distribution. We propose TacoGFN, a Generative Flow
+Network conditioned on protein pocket structure, using binding affinity, drug-likeliness and synthesizability measures as our reward. 
+
+Empirically, our method outperforms state-of-art methods on the CrossDocked2020 benchmark for every molecular property (Vina score, QED, SA), while improving the generation time by multiple orders of magnitude. TACOGFN achieves −8.82 in median docking score and 52.63% in Novel Hit Rate.
+
+If you have any problems or need help with the code, please add an issue or contact tonyzshen@gmail.com.
 
 ### Setup
 
