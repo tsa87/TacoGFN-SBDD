@@ -21,6 +21,7 @@ from src.tacogfn.algo.trajectory_balance import (
     PocketTrajectoryBalance,
 )
 from src.tacogfn.config import Config
+from src.tacogfn.const import fragment_const
 from src.tacogfn.data.pharmacophore import (
     PharmacoDB,
     PharmacophoreGraphDataset,
@@ -35,12 +36,6 @@ from src.tacogfn.online_trainer import StandardOnlineTrainer
 from src.tacogfn.trainer import FlatRewards, GFNTask, RewardScalar
 from src.tacogfn.utils import molecules, sascore
 from src.tacogfn.utils.conditioning import TemperatureConditional
-
-_HPS_PATH = flags.DEFINE_string(
-    "hps_path",
-    "hps/crossdocked_mol_256.json",
-    "Path to the hyperparameter file.",
-)
 
 
 class PharmacophoreTask(GFNTask):
@@ -223,17 +218,14 @@ class PharmacophoreTask(GFNTask):
             preds, avg_preds
         ) * self.cfg.task.pharmaco_frag.leaky_coefficient  # leaky reward up to avg
 
-        affinity_reward /= (
-            self.cfg.task.pharmaco_frag.max_dock_reward
-        )  # still normalize reward to be in range [0, 1]
+        affinity_reward = affinity_reward * -1
+
         if self.cfg.task.pharmaco_frag.mol_adj != 0:
             mol_atom_count = [m.GetNumHeavyAtoms() for m in mols]
             mol_adj = torch.tensor(
                 [1 / c ** (self.cfg.task.pharmaco_frag.mol_adj) for c in mol_atom_count]
             )
-            affinity_reward = affinity_reward * mol_adj
-
-        affinity_reward = affinity_reward.clip(0, 1)
+            affinity_reward *= mol_adj
 
         # 1 for qed above 0.7, linear decay to 0 from 0.7 to 0.0
         qeds = torch.as_tensor([Descriptors.qed(mol) for mol in mols])
@@ -271,7 +263,6 @@ class PharmacophoreTask(GFNTask):
         if "mw" in self.cfg.task.pharmaco_frag.objectives:
             reward *= mw
 
-        reward *= 10  # make the reward more significant
         reward = self.flat_reward_transform(reward).clip(1e-4, 100).reshape((-1, 1))
 
         infos = {
@@ -408,8 +399,12 @@ class PharmacophoreTrainer(StandardOnlineTrainer):
         cfg.replay.warmup = 1_000
 
     def setup_env_context(self):
+        # fragments = fragment_const.ZINC250K_50CUTOFF_BRICS_FRAGMENTS
+
         self.ctx = frag_mol_env.FragMolBuildingEnvContext(
-            max_frags=self.cfg.algo.max_nodes, num_cond_dim=self.task.num_cond_dim
+            max_frags=self.cfg.algo.max_nodes,
+            num_cond_dim=self.task.num_cond_dim,
+            # fragments=fragments,
         )
 
     def setup_task(self):
@@ -539,6 +534,12 @@ class PharmacophoreTrainer(StandardOnlineTrainer):
 
 def main():
     """Example of how this model can be run."""
+    _HPS_PATH = flags.DEFINE_string(
+        "hps_path",
+        "hps/crossdocked_mol_256.json",
+        "Path to the hyperparameter file.",
+    )
+
     flags.FLAGS(sys.argv)
     with open(_HPS_PATH.value, "r") as f:
         hps = json.load(f)

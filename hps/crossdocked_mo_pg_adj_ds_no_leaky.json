@@ -35,10 +35,10 @@
         "pharmaco_frag": {
             "fragment_type": "zinc250k_50cutoff_brics",
             "affinity_predictor": "alpha",
-            "leaky_coefficient": 0.2,
+            "leaky_coefficient": 1.0,
             "reward_multiplier": 3.0,
             "max_qed_reward": 0.7,
-            "max_dock_reward": -5.0,
+            "max_dock_reward": -999.0,
             "max_sa_reward": 0.8,
             "mol_adj": 0.33,
             "qed_exponent": 1.0,

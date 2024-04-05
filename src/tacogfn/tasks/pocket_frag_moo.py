@@ -1,66 +1,56 @@
-"""
-Multi-objective Seh Fragment based task from
-https://github.com/recursionpharma/src.tacogfn.
-"""
-
+import json
 import os
 import pathlib
 import shutil
+import sys
 from typing import Any, Callable, Dict, List, Tuple, Union
 
 import numpy as np
 import torch
 import torch.nn as nn
 import torch_geometric.data as gd
+from absl import flags
 from rdkit.Chem import QED, Descriptors
 from rdkit.Chem.rdchem import Mol as RDMol
 from torch import Tensor
 from torch.utils.data import Dataset
 
-from src.tacogfn.algo.envelope_q_learning import (
-    EnvelopeQLearning,
-    GraphTransformerFragEnvelopeQL,
-)
-from src.tacogfn.algo.multiobjective_reinforce import MultiObjectiveReinforce
 from src.tacogfn.config import Config
+from src.tacogfn.data.pharmacophore import (
+    PharmacoDB,
+    PharmacophoreGraphDataset,
+    PharmacophoreModel,
+)
 from src.tacogfn.envs.frag_mol_env import FragMolBuildingEnvContext
 from src.tacogfn.models import bengio2021flow
+from src.tacogfn.tasks.pharmaco_frag import PharmacophoreTask, PharmacophoreTrainer
 from src.tacogfn.tasks.seh_frag import SEHFragTrainer, SEHTask
-from src.tacogfn.trainer import FlatRewards, RewardScalar
-from src.tacogfn.utils import metrics, sascore
+from src.tacogfn.trainer import FlatRewards, GFNTask, RewardScalar
+from src.tacogfn.utils import metrics, molecules, sascore
 from src.tacogfn.utils.conditioning import (
     FocusRegionConditional,
     MultiObjectiveWeightedPreferences,
 )
-from src.tacogfn.utils.multiobjective_hooks import MultiObjectiveStatsHook, TopKHook
 
 
-class SEHMOOTask(SEHTask):
-    """Sets up a multiobjective task where the rewards are (functions of):
-    - the the binding energy of a molecule to Soluble Epoxide Hydrolases.
-    - its QED
-    - its synthetic accessibility
-    - its molecular weight
-
-    The proxy is pretrained, and obtained from the original GFlowNet paper, see `src.tacogfn..models.bengio2021flow`.
-    """
+class PocketMOOTask(PharmacophoreTask):
 
     def __init__(
         self,
         dataset: Dataset,
+        pharmaco_dataset: PharmacophoreGraphDataset,
         cfg: Config,
         rng: np.random.Generator = None,
         wrap_model: Callable[[nn.Module], nn.Module] = None,
     ):
-        super().__init__(dataset, cfg, rng, wrap_model)
-        self.cfg = cfg
-        mcfg = self.cfg.task.seh_moo
-        self.objectives = cfg.task.seh_moo.objectives
-        self.dataset = dataset
-        if self.cfg.cond.focus_region.focus_type is not None:
-            self.focus_cond = FocusRegionConditional(self.cfg, mcfg.n_valid, rng)
-        else:
-            self.focus_cond = None
+        super().__init__(dataset, pharmaco_dataset, cfg, rng, wrap_model)
+
+        mcfg = self.cfg.task.pocket_moo
+        self.objectives = ["ds", "qed", "sa"]
+
+        self.cfg.cond.focus_region.focus_type = None
+        self.focus_cond = None
+
         self.pref_cond = MultiObjectiveWeightedPreferences(self.cfg)
         self.temperature_sample_dist = cfg.cond.temperature.sample_dist
         self.temperature_dist_params = cfg.cond.temperature.dist_params
@@ -70,20 +60,15 @@ class SEHMOOTask(SEHTask):
             + self.pref_cond.encoding_size()
             + (self.focus_cond.encoding_size() if self.focus_cond is not None else 0)
         )
-        assert set(self.objectives) <= {"seh", "qed", "sa", "mw"} and len(
-            self.objectives
-        ) == len(set(self.objectives))
-
-    def flat_reward_transform(self, y: Union[float, Tensor]) -> FlatRewards:
-        return FlatRewards(torch.as_tensor(y))
-
-    def inverse_flat_reward_transform(self, rp):
-        return rp
+        assert len(self.objectives) == len(set(self.objectives))
 
     def sample_conditional_information(
-        self, n: int, train_it: int
+        self,
+        n: int,
+        train_it: int,
+        partition: str,
     ) -> Dict[str, Tensor]:
-        cond_info = super().sample_conditional_information(n, train_it)
+        cond_info = super().sample_conditional_information(n, train_it, partition)
         pref_ci = self.pref_cond.sample(n)
         focus_ci = (
             self.focus_cond.sample(n, train_it)
@@ -200,137 +185,127 @@ class SEHMOOTask(SEHTask):
         )
         return RewardScalar(tempered_reward)
 
-    def compute_flat_rewards(self, mols: List[RDMol]) -> Tuple[FlatRewards, Tensor]:
-        graphs = [bengio2021flow.mol2graph(i) for i in mols]
-        is_valid = torch.tensor([i is not None for i in graphs]).bool()
+    def compute_flat_rewards(
+        self,
+        mols: List[RDMol],
+        pharmacophore_ids: Tensor,
+    ) -> Tuple[FlatRewards, Tensor, Dict[str, Tensor]]:
+        is_valid = torch.tensor([i is not None for i in mols]).bool()
         if not is_valid.any():
             return FlatRewards(torch.zeros((0, len(self.objectives)))), is_valid
 
+        flat_r: List[Tensor] = []
+
+        mols = [m for m, v in zip(mols, is_valid) if v]
+        pharmacophore_ids = pharmacophore_ids[is_valid]
+        preds = self.predict_docking_score(mols, pharmacophore_ids)
+
+        pdb_ids = self.pharmaco_dataset.get_keys_from_idxs(pharmacophore_ids.tolist())
+        avg_preds = torch.as_tensor(
+            [
+                (
+                    min(0, self.avg_prediction_for_pocket[pdb_id])
+                    if pdb_id in self.avg_prediction_for_pocket
+                    else -7.0
+                )
+                for pdb_id in pdb_ids
+            ],
+            dtype=torch.float,
+        )
+        preds[preds.isnan()] = 0
+
+        affinity_reward = (preds - avg_preds).clip(
+            self.cfg.task.pharmaco_frag.max_dock_reward, 0
+        ) + torch.max(
+            preds, avg_preds
+        ) * self.cfg.task.pharmaco_frag.leaky_coefficient  # leaky reward up to avg
+
+        affinity_reward /= (
+            self.cfg.task.pharmaco_frag.max_dock_reward
+        )  # still normalize reward to be in range [0, 1]
+        if self.cfg.task.pharmaco_frag.mol_adj != 0:
+            mol_atom_count = [m.GetNumHeavyAtoms() for m in mols]
+            mol_adj = torch.tensor(
+                [1 / c ** (self.cfg.task.pharmaco_frag.mol_adj) for c in mol_atom_count]
+            )
+            affinity_reward = affinity_reward * mol_adj * 3
+
+        affinity_reward = affinity_reward.clip(0, 1)
+        flat_r.append(affinity_reward)
+
+        # 1 for qed above 0.7, linear decay to 0 from 0.7 to 0.0
+        qeds = torch.as_tensor([Descriptors.qed(mol) for mol in mols])
+
+        qed_reward = torch.pow(
+            (
+                qeds.clip(0.0, self.cfg.task.pharmaco_frag.max_qed_reward)
+                / self.cfg.task.pharmaco_frag.max_qed_reward
+            ),
+            self.cfg.task.pharmaco_frag.qed_exponent,
+        )
+        flat_r.append(qed_reward)
+
+        sas = torch.as_tensor([(10 - sascore.calculateScore(mol)) / 9 for mol in mols])
+        sa_reward = torch.pow(
+            (
+                sas.clip(0.0, self.cfg.task.pharmaco_frag.max_sa_reward)
+                / self.cfg.task.pharmaco_frag.max_sa_reward
+            ),
+            self.cfg.task.pharmaco_frag.sa_exponent,
+        )
+        flat_r.append(sa_reward)
+
+        # 1 until 300 then linear decay to 0 until 1000
+        mw = torch.as_tensor(
+            [((300 - Descriptors.MolWt(mol)) / 700 + 1) for mol in mols]
+        ).clip(0, 1)
+
+        d = float(np.mean(molecules.compute_diversity(mols)))
+        diversity = torch.as_tensor([d for _ in range(len(mols))])
+
+        reward = torch.stack(flat_r, dim=1)
+
+        infos = {
+            "docking_score": preds,
+            "qed": qeds,
+            "sa": sas,
+            "mw": mw,
+            "diversity": diversity,
+        }
+        if self.cfg.info_only_dock_proxy:
+            info_preds = self.predict_docking_score(
+                mols, pharmacophore_ids, info_only=True
+            )
+            info_preds[info_preds.isnan()] = 0
+            infos["info_only_docking_score"] = info_preds
         else:
-            flat_r: List[Tensor] = []
-            if "seh" in self.objectives:
-                batch = gd.Batch.from_data_list([i for i in graphs if i is not None])
-                batch.to(self.device)
-                seh_preds = (
-                    self.models["seh"](batch).reshape((-1,)).clip(1e-4, 100).data.cpu()
-                    / 8
-                )
-                seh_preds[seh_preds.isnan()] = 0
-                flat_r.append(seh_preds)
+            infos["info_only_docking_score"] = preds
 
-            def safe(f, x, default):
-                try:
-                    return f(x)
-                except Exception:
-                    return default
-
-            if "qed" in self.objectives:
-                qeds = torch.tensor(
-                    [safe(QED.qed, i, 0) for i, v in zip(mols, is_valid) if v.item()]
-                )
-                flat_r.append(qeds)
-
-            if "sa" in self.objectives:
-                sas = torch.tensor(
-                    [
-                        safe(sascore.calculateScore, i, 10)
-                        for i, v in zip(mols, is_valid)
-                        if v.item()
-                    ]
-                )
-                sas = (10 - sas) / 9  # Turn into a [0-1] reward
-                flat_r.append(sas)
-
-            if "mw" in self.objectives:
-                molwts = torch.tensor(
-                    [
-                        safe(Descriptors.MolWt, i, 1000)
-                        for i, v in zip(mols, is_valid)
-                        if v.item()
-                    ]
-                )
-                molwts = ((300 - molwts) / 700 + 1).clip(
-                    0, 1
-                )  # 1 until 300 then linear decay to 0 until 1000
-                flat_r.append(molwts)
-
-            flat_rewards = torch.stack(flat_r, dim=1)
-            return FlatRewards(flat_rewards), is_valid
+        return (FlatRewards(reward), is_valid, infos)
 
 
-class SEHMOOFragTrainer(SEHFragTrainer):
-    task: SEHMOOTask
+class PocketMOOTrainer(PharmacophoreTrainer):
+    task: PocketMOOTask
     ctx: FragMolBuildingEnvContext
 
     def set_default_hps(self, cfg: Config):
         super().set_default_hps(cfg)
         cfg.algo.sampling_tau = 0.95
-        # We use a fixed set of preferences as our "validation set", so we must disable the preference (cond_info)
-        # sampling and set the offline ratio to 1
-        cfg.algo.valid_sample_cond_info = False
-        cfg.algo.valid_offline_ratio = 1
-
-    def setup_algo(self):
-        algo = self.cfg.algo.method
-        if algo == "MOREINFORCE":
-            self.algo = MultiObjectiveReinforce(self.env, self.ctx, self.rng, self.cfg)
-        elif algo == "MOQL":
-            self.algo = EnvelopeQLearning(
-                self.env, self.ctx, self.task, self.rng, self.cfg
-            )
-        else:
-            super().setup_algo()
+        cfg.algo.valid_sample_cond_info = True
 
     def setup_task(self):
-        self.task = SEHMOOTask(
+        self.task = PocketMOOTask(
             dataset=self.training_data,
+            pharmaco_dataset=self.pharmaco_db,
             cfg=self.cfg,
             rng=self.rng,
             wrap_model=self._wrap_for_mp,
         )
 
-    def setup_env_context(self):
-        if self.cfg.task.fragment_type == "zinc250k_50cutoff_brics":
-            fragments = fragment_const.ZINC250K_50CUTOFF_BRICS_FRAGMENTS
-        else:
-            fragments = fragment_const.GFLOWNET_FRAGMENTS
-
-        self.ctx = FragMolBuildingEnvContext(
-            max_frags=self.cfg.algo.max_nodes,
-            num_cond_dim=self.task.num_cond_dim,
-            fragments=fragments,
-        )
-        print(f"Using {len(fragments)} fragments...")
-
-    def setup_model(self):
-        if self.cfg.algo.method == "MOQL":
-            self.model = GraphTransformerFragEnvelopeQL(
-                self.ctx,
-                num_emb=self.cfg.model.num_emb,
-                num_layers=self.cfg.model.num_layers,
-                num_heads=self.cfg.model.graph_transformer.num_heads,
-                num_objectives=len(self.cfg.task.seh_moo.objectives),
-            )
-        else:
-            super().setup_model()
-
     def setup(self):
         super().setup()
-        self.sampling_hooks.append(
-            MultiObjectiveStatsHook(
-                256,
-                self.cfg.log_dir,
-                compute_igd=True,
-                compute_pc_entropy=True,
-                compute_focus_accuracy=(
-                    True if self.cfg.task.seh_moo.focus_type is not None else False
-                ),
-                focus_cosim=self.cfg.task.seh_moo.focus_cosim,
-            )
-        )
-        # instantiate preference and focus conditioning vectors for validation
 
-        tcfg = self.cfg.task.seh_moo
+        tcfg = self.cfg.task.pocket_moo
         n_obj = len(tcfg.objectives)
 
         # making sure hyperparameters for preferences and focus regions are consistent
@@ -392,11 +367,11 @@ class SEHMOOFragTrainer(SEHFragTrainer):
         else:
             valid_cond_vector = valid_preferences
 
-        self._top_k_hook = TopKHook(10, tcfg.n_valid_repeats, n_valid)
+        # self._top_k_hook = TopKHook(10, tcfg.n_valid_repeats, n_valid)
         self.test_data = RepeatedCondInfoDataset(
             valid_cond_vector, repeat=tcfg.n_valid_repeats
         )
-        self.valid_sampling_hooks.append(self._top_k_hook)
+        # self.valid_sampling_hooks.append(self._top_k_hook)
 
         self.algo.task = self.task
 
@@ -445,65 +420,16 @@ class RepeatedCondInfoDataset:
 
 def main():
     """Example of how this model can be run."""
-    hps = {
-        "log_dir": "./logs/debug_run_sfm",
-        "device": "cuda" if torch.cuda.is_available() else "cpu",
-        "pickle_mp_messages": True,
-        "overwrite_existing_exp": True,
-        "seed": 0,
-        "num_training_steps": 500,
-        "num_final_gen_steps": 50,
-        "validate_every": 100,
-        "num_workers": 0,
-        "algo": {
-            "global_batch_size": 64,
-            "method": "TB",
-            "sampling_tau": 0.95,
-            "train_random_action_prob": 0.01,
-            "tb": {
-                "Z_learning_rate": 1e-3,
-                "Z_lr_decay": 50000,
-            },
-        },
-        "model": {
-            "num_layers": 2,
-            "num_emb": 256,
-        },
-        "task": {
-            "seh_moo": {
-                "objectives": ["seh", "qed"],
-                "n_valid": 15,
-                "n_valid_repeats": 128,
-            },
-        },
-        "opt": {
-            "learning_rate": 1e-4,
-            "lr_decay": 20000,
-        },
-        "cond": {
-            "temperature": {
-                "sample_dist": "constant",
-                "dist_params": [60.0],
-                "num_thermometer_dim": 32,
-            },
-            "weighted_prefs": {
-                "preference_type": "dirichlet",
-            },
-            "focus_region": {
-                "focus_type": None,  # "learned-tabular",
-                "focus_cosim": 0.98,
-                "focus_limit_coef": 1e-1,
-                "focus_model_training_limits": (0.25, 0.75),
-                "focus_model_state_space_res": 30,
-                "max_train_it": 5_000,
-            },
-        },
-        "replay": {
-            "use": False,
-            "warmup": 1000,
-            "hindsight_ratio": 0.0,
-        },
-    }
+    _HPS_PATH = flags.DEFINE_string(
+        "hps_path",
+        "hps/crossdocked_mol_256.json",
+        "Path to the hyperparameter file.",
+    )
+    flags.FLAGS(sys.argv)
+
+    with open(_HPS_PATH.value, "r") as f:
+        hps = json.load(f)
+
     if os.path.exists(hps["log_dir"]):
         if hps["overwrite_existing_exp"]:
             shutil.rmtree(hps["log_dir"])
@@ -513,7 +439,7 @@ def main():
             )
     os.makedirs(hps["log_dir"])
 
-    trial = SEHMOOFragTrainer(hps)
+    trial = PocketMOOTrainer(hps)
     trial.print_every = 1
     trial.run()
 
