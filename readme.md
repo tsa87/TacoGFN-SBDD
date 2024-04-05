@@ -1,6 +1,6 @@
 # TacoGFN: Target Conditioned GFlowNet for Structure-based Drug Design
 
-Spotlighted in **_NeurIPS Workshop 2023 (GenBio | Generative AI and Biology)_** [arxiv](https://arxiv.org/abs/2310.03223)
+Spotlighted in **_NeurIPS Workshop 2023 (GenBio | Generative AI and Biology)_** [[**arxiv**](https://arxiv.org/abs/2310.03223)]. 
 
 Official Github for **_TacoGFN: Target Conditioned GFlowNet for Structure-based Drug Design_** by Tony Shen, Seonghwan Seo,  Grayson Lee, Mohit Pandey, Jason Smith, Artem Cherkasov, Woo Youn Kim and Martin Ester.
 
