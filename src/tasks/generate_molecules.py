@@ -116,12 +116,11 @@ def main() -> None:
         results[pdb_id]["smiles"] = top_n_smiles
         results[pdb_id]["preds"] = top_n_preds
 
-    today_date = pd.Timestamp.today().strftime("%Y%m%d")
     exp_name = trail.cfg.log_dir.split("/")[-1]
 
     save_path = os.path.join(
         _SAVE_FOLDER.value,
-        f"{today_date}_{_BETA_TEMP.value}_{_SAMPLE_TEMP.value}_{_NUM_PER_POCKET.value}_{_COMMENT.value}.json",
+        f"{_BETA_TEMP.value}_{_SAMPLE_TEMP.value}_{_NUM_PER_POCKET.value}_{_COMMENT.value}.json",
     )
 
     with open(save_path, "w") as f:

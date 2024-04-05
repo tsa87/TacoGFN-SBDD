@@ -191,6 +191,7 @@ class PharmacoDB:
 
         self.rng = rng
         self.id_partition = {}
+
         if id_partition is not None:
             for key, ids in id_partition.items():
                 self.id_partition[key] = list(set(self.all_id) & set(ids))

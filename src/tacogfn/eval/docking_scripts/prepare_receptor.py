@@ -81,7 +81,7 @@ def convert_receptor_pdbqt(receptor_filename, outputfilename, hetatom='off'):
 def get_parser():
     parser = ArgumentParser(
         prog='PDBQT-OpenBabel',
-        description="Python Embedding for Openbabel PDBQT Conversion (Seonghwan Seo)",
+        description="Python Embedding for Openbabel PDBQT Conversion",
         formatter_class=argparse.MetavarTypeHelpFormatter
     )
     input_group = parser.add_argument_group('Input')

@@ -26,17 +26,6 @@ _MOLECULES_PATH = flags.DEFINE_string(
     "Path to the generated molecules.",
 )
 
-_POCKET_TO_SCORE_PATH = flags.DEFINE_string(
-    "pocket_to_score_path",
-    "dataset/pocket_to_score.pt",
-    "Path to the pocket to native ligand docking score file.",
-)
-
-_POCKET_TO_CENTRIOD_PATH = flags.DEFINE_string(
-    "pocket_to_centroid_path",
-    "dataset/pocket_to_centroid.pt",
-    "Path to the pocket to centroid file.",
-)
 
 _RESULTS_FOLDER = flags.DEFINE_string(
     "results_save_path",
@@ -92,9 +81,6 @@ def compute_docking_scores(
 
 def main() -> None:
     flags.FLAGS(sys.argv)
-
-    pocket_to_centroid = torch.load(_POCKET_TO_CENTRIOD_PATH.value)
-    pocket_to_score = torch.load(_POCKET_TO_SCORE_PATH.value)
     generated_results = json.load(open(_MOLECULES_PATH.value))
 
     # Only evaluate the first _NUM_OF_POCKETS.value pockets
@@ -105,9 +91,6 @@ def main() -> None:
     ref_fps = misc.get_reference_fps()
 
     for pocket, val in tqdm(generated_results.items()):
-        centroid = pocket_to_centroid[pocket]
-        native_docking_score = pocket_to_score[pocket]
-
         smiles = val["smiles"][: _MOLS_PER_POCKET.value]
         mols = [Chem.MolFromSmiles(smi) for smi in smiles]
 
@@ -117,15 +100,11 @@ def main() -> None:
         novelty = molecules.compute_novelty(mols, ref_fps)
 
         evaluated_results[pocket] = {
-            # "time": time,
             "smiles": smiles,
             "qeds": qeds,
             "sas": sas,
-            # "preds": preds,
             "diversity": diversity,
             "novelty": novelty,
-            "centroid": centroid,
-            "native_docking_score": native_docking_score,
         }
 
         if "time" in val.keys():

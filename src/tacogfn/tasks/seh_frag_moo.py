@@ -1,6 +1,6 @@
 """
 Multi-objective Seh Fragment based task from
-https://github.com/recursionpharma/src.tacogfn.
+https://github.com/recursionpharma/gflownet
 """
 
 import os
@@ -12,27 +12,26 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch_geometric.data as gd
+from gflownet.algo.envelope_q_learning import (
+    EnvelopeQLearning,
+    GraphTransformerFragEnvelopeQL,
+)
+from gflownet.algo.multiobjective_reinforce import MultiObjectiveReinforce
+from gflownet.config import Config
+from gflownet.envs.frag_mol_env import FragMolBuildingEnvContext
+from gflownet.models import bengio2021flow
+from gflownet.tasks.seh_frag import SEHFragTrainer, SEHTask
+from gflownet.trainer import FlatRewards, RewardScalar
+from gflownet.utils import metrics, sascore
+from gflownet.utils.conditioning import (
+    FocusRegionConditional,
+    MultiObjectiveWeightedPreferences,
+)
+from gflownet.utils.multiobjective_hooks import MultiObjectiveStatsHook, TopKHook
 from rdkit.Chem import QED, Descriptors
 from rdkit.Chem.rdchem import Mol as RDMol
 from torch import Tensor
 from torch.utils.data import Dataset
-
-from src.tacogfn.algo.envelope_q_learning import (
-    EnvelopeQLearning,
-    GraphTransformerFragEnvelopeQL,
-)
-from src.tacogfn.algo.multiobjective_reinforce import MultiObjectiveReinforce
-from src.tacogfn.config import Config
-from src.tacogfn.envs.frag_mol_env import FragMolBuildingEnvContext
-from src.tacogfn.models import bengio2021flow
-from src.tacogfn.tasks.seh_frag import SEHFragTrainer, SEHTask
-from src.tacogfn.trainer import FlatRewards, RewardScalar
-from src.tacogfn.utils import metrics, sascore
-from src.tacogfn.utils.conditioning import (
-    FocusRegionConditional,
-    MultiObjectiveWeightedPreferences,
-)
-from src.tacogfn.utils.multiobjective_hooks import MultiObjectiveStatsHook, TopKHook
 
 
 class SEHMOOTask(SEHTask):
@@ -42,7 +41,7 @@ class SEHMOOTask(SEHTask):
     - its synthetic accessibility
     - its molecular weight
 
-    The proxy is pretrained, and obtained from the original GFlowNet paper, see `src.tacogfn..models.bengio2021flow`.
+    The proxy is pretrained, and obtained from the original GFlowNet paper, see `gflownet.models.bengio2021flow`.
     """
 
     def __init__(
@@ -322,9 +321,9 @@ class SEHMOOFragTrainer(SEHFragTrainer):
                 self.cfg.log_dir,
                 compute_igd=True,
                 compute_pc_entropy=True,
-                compute_focus_accuracy=(
-                    True if self.cfg.task.seh_moo.focus_type is not None else False
-                ),
+                compute_focus_accuracy=True
+                if self.cfg.task.seh_moo.focus_type is not None
+                else False,
                 focus_cosim=self.cfg.task.seh_moo.focus_cosim,
             )
         )

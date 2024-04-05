@@ -7,7 +7,6 @@ import copy
 import os
 import pathlib
 
-import git
 import torch
 from omegaconf import OmegaConf
 from torch import Tensor
@@ -90,12 +89,6 @@ class StandardOnlineTrainer(GFNTrainer):
             ),
             "none": lambda x: None,
         }[self.cfg.opt.clip_grad_type]
-
-        # saving hyperparameters
-        git_hash = git.Repo(
-            __file__, search_parent_directories=True
-        ).head.object.hexsha[:7]
-        self.cfg.git_hash = git_hash
 
         os.makedirs(self.cfg.log_dir, exist_ok=True)
         print("\n\nHyperparameters:\n")

@@ -9,6 +9,7 @@ biopython
 gpytorch
 easydict
 pandas
+tabulate
 tqdm
 lmdb 
 wandb

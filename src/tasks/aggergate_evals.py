@@ -1,6 +1,6 @@
 """ Example Usage
 python3 src/tasks/aggergate_evals.py  --eval_paths 
-    /home/tsa87/refactor-tacogfn/misc/generated_molecules/20240124_0.5_zinc-mo-256.json
+    misc/generated_molecules/20240124_0.5_zinc-mo-256.json
 """
 
 import json
@@ -15,12 +15,6 @@ _EVAL_PATH = flags.DEFINE_string(
     "eval_path",
     "misc/evaluations/20240112_2024_01_11_run_pharmaco_frag_beta_qed_100_per_pocket.json",
     "Path to the generated molecules.",
-)
-
-_NORMALIZE_DOCKING_SCORE = flags.DEFINE_boolean(
-    "normalize_docking_score",
-    False,
-    "Flag to indicate whether to compute normalized docking scores.",
 )
 
 
@@ -81,23 +75,6 @@ def main():
             ]
             all_vals["docking_scores"].append(np.mean(val["docking_scores"]))
 
-            if _NORMALIZE_DOCKING_SCORE.value:
-                from rdkit import Chem
-
-                mols = [Chem.MolFromSmiles(smi) for smi in val["smiles"]]
-                mol_atoms = [mol.GetNumHeavyAtoms() for mol in mols]
-                val["normalized_docking_scores"] = [
-                    v / (a ** (1 / 3)) for v, a in zip(val["docking_scores"], mol_atoms)
-                ]
-                all_vals["normalized_docking_scores"].append(
-                    np.mean(val["normalized_docking_scores"])
-                )
-
-            all_vals["all_docking_scores"] += val["docking_scores"]
-            all_vals["all_normalized_docking_scores"] += val[
-                "normalized_docking_scores"
-            ]
-
             # COMPUTE HIT %
             hit_list = []
             novel_hit_list = []
@@ -138,13 +115,6 @@ def main():
             all_vals["top_10_docking_scores"].append(
                 np.mean(docking_scores[sorted_indices[:10]])
             )
-
-            if _NORMALIZE_DOCKING_SCORE.value:
-                all_vals["top_10_normalized_docking_scores"].append(
-                    np.mean(
-                        np.array(val["normalized_docking_scores"])[sorted_indices[:10]]
-                    )
-                )
 
             # Compute top 10 hit docking scores
             top_10_okay_docking_scores = []

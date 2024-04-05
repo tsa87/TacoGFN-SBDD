@@ -35,9 +35,7 @@ def create_logger(
 
 
 def get_reference_fps():
-    crossdock = torch.load(
-        "dataset/archived/crossdock_docking_scores/all_crossdock_100k.pt"
-    )
+    crossdock = torch.load("dataset/all_crossdock_100k.pt")
     crossdock_smiles = list(set([v[1] for v in crossdock]))
     crossdock_mols = [Chem.MolFromSmiles(s) for s in crossdock_smiles]
     crossdock_fps = [Chem.RDKFingerprint(m) for m in crossdock_mols]
