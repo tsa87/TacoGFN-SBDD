@@ -12,7 +12,7 @@ from absl import flags
 from rdkit import Chem
 from tqdm import tqdm
 
-from src.tacogfn.tasks import pharmaco_frag
+from src.tacogfn.tasks import pocket_frag
 
 _MODEL_PATH = flags.DEFINE_string(
     "model_path",
@@ -67,7 +67,7 @@ def main() -> None:
     flags.FLAGS(sys.argv)
 
     model_state = torch.load(_MODEL_PATH.value)
-    trail = pharmaco_frag.PharmacophoreTrainer(model_state["cfg"])
+    trail = pocket_frag.PharmacophoreTrainer(model_state["cfg"])
 
     trail.model.load_state_dict(model_state["models_state_dict"][0])
     trail.model.eval()
