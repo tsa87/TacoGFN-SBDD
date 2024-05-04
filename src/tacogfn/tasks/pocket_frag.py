@@ -15,6 +15,7 @@ from rdkit.Chem import Descriptors
 from rdkit.Chem.rdchem import Mol as RDMol
 from torch import Tensor, nn
 from torch.utils.data import DataLoader, Dataset
+from src.tacogfn.envs.frag_mol_env import FragMolBuildingEnvContext
 
 from src.tacogfn.algo.trajectory_balance import (
     PharmacophoreTrajectoryBalance,
@@ -203,7 +204,7 @@ class PharmacophoreTask(GFNTask):
                 (
                     min(0, self.avg_prediction_for_pocket[pdb_id])
                     if pdb_id in self.avg_prediction_for_pocket
-                    else -7.0
+                    else -8.0
                 )
                 for pdb_id in pdb_ids
             ],
@@ -211,14 +212,7 @@ class PharmacophoreTask(GFNTask):
         )
 
         preds[preds.isnan()] = 0
-
-        affinity_reward = (preds - avg_preds).clip(
-            self.cfg.task.pharmaco_frag.max_dock_reward, 0
-        ) + torch.max(
-            preds, avg_preds
-        ) * self.cfg.task.pharmaco_frag.leaky_coefficient  # leaky reward up to avg
-
-        affinity_reward = affinity_reward * -1
+        affinity_reward = (preds / avg_preds / 2).clip(0, 1)
 
         if self.cfg.task.pharmaco_frag.mol_adj != 0:
             mol_atom_count = [m.GetNumHeavyAtoms() for m in mols]
@@ -229,23 +223,10 @@ class PharmacophoreTask(GFNTask):
 
         # 1 for qed above 0.7, linear decay to 0 from 0.7 to 0.0
         qeds = torch.as_tensor([Descriptors.qed(mol) for mol in mols])
-
-        qed_reward = torch.pow(
-            (
-                qeds.clip(0.0, self.cfg.task.pharmaco_frag.max_qed_reward)
-                / self.cfg.task.pharmaco_frag.max_qed_reward
-            ),
-            self.cfg.task.pharmaco_frag.qed_exponent,
-        )
+        qed_reward = qeds.clip(0.0, self.cfg.task.pharmaco_frag.max_qed_reward) / self.cfg.task.pharmaco_frag.max_qed_reward
 
         sas = torch.as_tensor([(10 - sascore.calculateScore(mol)) / 9 for mol in mols])
-        sa_reward = torch.pow(
-            (
-                sas.clip(0.0, self.cfg.task.pharmaco_frag.max_sa_reward)
-                / self.cfg.task.pharmaco_frag.max_sa_reward
-            ),
-            self.cfg.task.pharmaco_frag.sa_exponent,
-        )
+        sa_reward = sas.clip(0.0, self.cfg.task.pharmaco_frag.max_sa_reward) / self.cfg.task.pharmaco_frag.max_sa_reward
 
         # 1 until 300 then linear decay to 0 until 1000
         mw = torch.as_tensor(
@@ -399,13 +380,19 @@ class PharmacophoreTrainer(StandardOnlineTrainer):
         cfg.replay.warmup = 1_000
 
     def setup_env_context(self):
-        # fragments = fragment_const.ZINC250K_50CUTOFF_BRICS_FRAGMENTS
+        if self.cfg.task.pharmaco_frag.fragment_type == "zinc250k_50cutoff_brics":
+            fragments = fragment_const.ZINC250K_50CUTOFF_BRICS_FRAGMENTS
+        elif self.cfg.task.pharmaco_frag.fragment_type == "crossdock_50cutoff":
+            fragments = fragment_const.CROSSDOCK_50CUTOFF_FRAGMENTS
+        else:
+            fragments = fragment_const.GFLOWNET_FRAGMENTS
 
-        self.ctx = frag_mol_env.FragMolBuildingEnvContext(
+        self.ctx = FragMolBuildingEnvContext(
             max_frags=self.cfg.algo.max_nodes,
             num_cond_dim=self.task.num_cond_dim,
-            # fragments=fragments,
+            fragments=fragments,
         )
+        print(f"Using {len(fragments)} fragments...")
 
     def setup_task(self):
         self.task = PharmacophoreTask(

@@ -33,16 +33,12 @@
     },
     "task": {
         "pharmaco_frag": {
-            "fragment_type": "zinc250k_50cutoff_brics",
+            "fragment_type": "gflownet",
             "affinity_predictor": "alpha",
-            "leaky_coefficient": 1.0,
             "reward_multiplier": 3.0,
-            "max_qed_reward": 0.7,
-            "max_dock_reward": -999.0,
-            "max_sa_reward": 0.8,
+            "max_qed_reward": 0.5,
+            "max_sa_reward": 0.7,
             "mol_adj": 0.33,
-            "qed_exponent": 1.0,
-            "sa_exponent": 1.0,
             "ablation": "pocket_graph",
             "objectives": [
                 "docking",
