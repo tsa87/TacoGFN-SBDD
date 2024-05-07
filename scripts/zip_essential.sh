@@ -1,0 +1,1 @@
+tar -czvf tacogfn_data.tar.gz  dataset/split_by_name.pt model_weights/crossdocked_dim_256.pth dataset/affinity_prediction_pharmacophores/crossdocked_dim_256 model_weights/zinc_1000_dim_128.pth  dataset/affinity_prediction_pharmacophores/zinc_1000_dim_128 dataset/pocket_to_avg_zinc_vina_score.pt  misc/new_pharmacophores_db.lmdb  misc/pocket_db.lmdb

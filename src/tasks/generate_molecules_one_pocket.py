@@ -62,9 +62,10 @@ _COMMENT = flags.DEFINE_string(
     "Comment for the experiment.",
 )
 
-
 def main() -> None:
     flags.FLAGS(sys.argv)
+
+    os.makedirs(_SAVE_FOLDER.value, exist_ok=True)
 
     model_state = torch.load(_MODEL_PATH.value)
     trail = pocket_frag.PharmacophoreTrainer(model_state["cfg"])
@@ -78,7 +79,7 @@ def main() -> None:
 
     results = {}
 
-    for idx in tqdm(test_idxs):
+    for idx in tqdm(test_idxs[:50]):
         # Generate molecules in batches
         batch_sizes = [_BATCH_SIZE.value] * (_NUM_PER_POCKET.value // _BATCH_SIZE.value)
         if _NUM_PER_POCKET.value % _BATCH_SIZE.value != 0:
@@ -116,16 +117,16 @@ def main() -> None:
         results[pdb_id]["smiles"] = top_n_smiles
         results[pdb_id]["preds"] = top_n_preds
 
-    today_date = pd.Timestamp.today().strftime("%Y%m%d")
-    exp_name = trail.cfg.log_dir.split("/")[-1]
+        today_date = pd.Timestamp.today().strftime("%Y%m%d")
+        exp_name = trail.cfg.log_dir.split("/")[-1]
 
-    save_path = os.path.join(
-        _SAVE_FOLDER.value,
-        f"{today_date}_{_BETA_TEMP.value}_{_SAMPLE_TEMP.value}_{_NUM_PER_POCKET.value}_{_COMMENT.value}.json",
-    )
+        save_path = os.path.join(
+            _SAVE_FOLDER.value,
+            f"{idx}_pocket_{_COMMENT.value}.json",
+        )
 
-    with open(save_path, "w") as f:
-        json.dump(results, f)
+        with open(save_path, "w") as f:
+            json.dump(results, f)
 
 
 if __name__ == "__main__":
