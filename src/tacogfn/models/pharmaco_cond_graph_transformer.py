@@ -130,6 +130,12 @@ class PocketConditionalGraphTransformer(nn.Module):
         return self.graph_transformer(mol_g, cond_cat)
 
 
+class SinglePocketConditionalGraphTransformer(PocketConditionalGraphTransformer):
+    def encode_pocket(self, pocket_data):
+        pocket_emb = super().encode_pocket(gd.Batch.from_data_list([pocket_data[0]]))
+        return pocket_emb.repeat(len(pocket_data), 1)
+
+
 class PharmacophoreConditionalGraphTransformerGFN(
     graph_transformer.GraphTransformerGFN
 ):
@@ -270,6 +276,33 @@ class PocketConditionalGraphTransformerGFN(graph_transformer.GraphTransformerGFN
     def forward(self, g, p, cond):
         node_embeddings, graph_embeddings = self.transf(g, p, cond)
         return self._forward_after_transf(g, node_embeddings, graph_embeddings)
+
+    def compute_logZ(self, cond_info, p):
+        pocket_embedding = self.transf.encode_pocket(p)
+        cond_cat = torch.cat([cond_info, pocket_embedding], dim=-1)
+        return self.logZ(cond_cat)
+
+
+class SinglePocketConditionalGraphTransformerGFN(PocketConditionalGraphTransformerGFN):
+    def __init__(
+        self,
+        env_ctx,
+        cfg,
+        num_graph_out=1,
+        do_bck=False,
+    ):
+        super().__init__(env_ctx, cfg, num_graph_out, do_bck)
+        num_emb = cfg.model.num_emb
+        self.transf = SinglePocketConditionalGraphTransformer(
+            pocket_dim=cfg.model.pharmaco_cond.pharmaco_dim,
+            x_dim=env_ctx.num_node_dim,
+            e_dim=env_ctx.num_edge_dim,
+            g_dim=env_ctx.num_cond_dim,
+            num_emb=num_emb,
+            num_layers=cfg.model.num_layers,
+            num_heads=cfg.model.graph_transformer.num_heads,
+            ln_type=cfg.model.graph_transformer.ln_type,
+        )
 
     def compute_logZ(self, cond_info, p):
         pocket_embedding = self.transf.encode_pocket(p)

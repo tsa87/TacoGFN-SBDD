@@ -6,6 +6,7 @@ from rdkit.Chem import AllChem, Descriptors
 from rdkit.Chem.Draw import rdMolDraw2D
 
 from src.tacogfn.utils import molecules, sascore
+from rdkit import DataStructs
 
 
 def convert_pdb_to_sdf(pdb_file: str, sdf_file: str) -> None:

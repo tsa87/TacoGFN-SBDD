@@ -77,9 +77,12 @@ def main() -> None:
 
     test_idxs = trail.pharmaco_db.get_partition_idxs("test")
 
-    results = {}
-
-    for idx in tqdm(test_idxs[:50]):
+    for idx in tqdm(test_idxs):
+        results = {}
+        
+        if os.path.exists(os.path.join(_SAVE_FOLDER.value, f"{idx}_pocket_{_COMMENT.value}.json")):
+            continue
+        
         # Generate molecules in batches
         batch_sizes = [_BATCH_SIZE.value] * (_NUM_PER_POCKET.value // _BATCH_SIZE.value)
         if _NUM_PER_POCKET.value % _BATCH_SIZE.value != 0:

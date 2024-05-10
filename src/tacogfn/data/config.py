@@ -25,6 +25,7 @@ class ReplayConfig:
     """
 
     use: bool = False
+    keep_top: bool = False
     capacity: Optional[int] = None
     warmup: Optional[int] = None
     hindsight_ratio: float = 0

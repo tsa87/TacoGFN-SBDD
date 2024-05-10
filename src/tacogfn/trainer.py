@@ -12,13 +12,13 @@ import torch
 import torch.nn as nn
 import torch.utils.tensorboard
 import torch_geometric.data as gd
-import wandb
 from omegaconf import OmegaConf
 from rdkit import RDLogger
 from rdkit.Chem.rdchem import Mol as RDMol
 from torch import Tensor
 from torch.utils.data import DataLoader, Dataset
 
+import wandb
 from src.tacogfn.data.replay_buffer import ReplayBuffer
 from src.tacogfn.data.sampling_iterator import SamplingIterator
 from src.tacogfn.envs.graph_building_env import (

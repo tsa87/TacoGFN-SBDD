@@ -14,6 +14,7 @@ from torch import Tensor
 
 from src.tacogfn.algo.trajectory_balance import TrajectoryBalance
 from src.tacogfn.data.replay_buffer import ReplayBuffer
+from src.tacogfn.data.replay_buffer import RewardPrioritizedReplayBuffer
 from src.tacogfn.models.graph_transformer import GraphTransformerGFN
 
 from .trainer import GFNTrainer
@@ -42,9 +43,14 @@ class StandardOnlineTrainer(GFNTrainer):
     def setup(self):
         super().setup()
         self.offline_ratio = 0
-        self.replay_buffer = (
-            ReplayBuffer(self.cfg, self.rng) if self.cfg.replay.use else None
-        )
+        
+        if self.cfg.replay.use:
+            if self.cfg.replay.keep_top:
+                self.replay_buffer = RewardPrioritizedReplayBuffer(self.cfg, self.rng)
+            else:
+                self.replay_buffer = ReplayBuffer(self.cfg, self.rng)
+        else:
+            self.replay_buffer = None
 
         # Separate Z parameters from non-Z to allow for LR decay on the former
         if hasattr(self.model, "logZ"):

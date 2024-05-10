@@ -241,9 +241,11 @@ class SamplingIterator(IterableDataset):
                         self.ctx.graph_to_mol(trajs[i]["result"]) for i in valid_idcs
                     ]
                     # ask the task to compute their reward
-                    online_flat_rew, m_is_valid = self.task.compute_flat_rewards(
-                        mols,
-                        cond_info["pharmacophore"][valid_idcs],
+                    online_flat_rew, m_is_valid, eval_dict = (
+                        self.task.compute_flat_rewards(
+                            mols,
+                            cond_info["pharmacophore"][valid_idcs],
+                        )
                     )
                     assert (
                         online_flat_rew.ndim == 2
@@ -360,6 +362,7 @@ class SamplingIterator(IterableDataset):
             batch.preferences = cond_info.get("preferences", None)
             batch.focus_dir = cond_info.get("focus_dir", None)
             batch.extra_info = extra_info
+            batch.eval_dict = eval_dict
             # TODO: we could very well just pass the cond_info dict to construct_batch above,
             # and the algo can decide what it wants to put in the batch object
 
@@ -522,7 +525,6 @@ class PharmacoCondSamplingIterator(SamplingIterator):
         for idcs in self._idx_iterator():
             num_offline = idcs.shape[0]  # This is in [0, self.offline_batch_size]
             # Sample conditional info such as temperature, trade-off weights, etc.
-
             if self.sample_cond_info:
                 num_online = self.online_batch_size
                 cond_info = self.task.sample_conditional_information(
@@ -592,9 +594,11 @@ class PharmacoCondSamplingIterator(SamplingIterator):
                         self.ctx.graph_to_mol(trajs[i]["result"]) for i in valid_idcs
                     ]
                     # ask the task to compute their reward
-                    online_flat_rew, m_is_valid, eval_dict = self.task.compute_flat_rewards(
-                        mols,
-                        cond_info["pharmacophore"][valid_idcs],
+                    online_flat_rew, m_is_valid, eval_dict = (
+                        self.task.compute_flat_rewards(
+                            mols,
+                            cond_info["pharmacophore"][valid_idcs],
+                        )
                     )
                     assert (
                         online_flat_rew.ndim == 2
@@ -603,7 +607,7 @@ class PharmacoCondSamplingIterator(SamplingIterator):
                     valid_idcs = valid_idcs[m_is_valid]
                     pred_reward = torch.zeros((num_online, online_flat_rew.shape[1]))
                     pred_reward[valid_idcs - num_offline] = online_flat_rew
-                    is_valid[num_offline:] = False
+                    is_valid[num_offline:num_offline+num_online] = False
                     is_valid[valid_idcs] = True
                     flat_rewards += list(pred_reward)
                     # Override the is_valid key in case the task made some mols invalid
@@ -661,13 +665,22 @@ class PharmacoCondSamplingIterator(SamplingIterator):
 
                 # push the online trajectories in the replay buffer and sample a new 'online' batch
                 for i in range(num_offline, len(trajs)):
-                    self.replay_buffer.push(
-                        deepcopy(trajs[i]),
-                        deepcopy(log_rewards[i]),
-                        deepcopy(flat_rewards[i]),
-                        deepcopy(cond_info[i]),
-                        deepcopy(is_valid[i]),
-                    )
+                    try:
+                        self.replay_buffer.push(
+                            deepcopy(trajs[i]),
+                            deepcopy(log_rewards[i]),
+                            deepcopy(flat_rewards[i]),
+                            deepcopy(cond_info[i]),
+                            deepcopy(is_valid[i]),
+                        )
+                    except Exception as e:
+                        print(e)
+                        print(trajs[i])
+                        print(log_rewards[i])
+                        print(flat_rewards[i])
+                        print(cond_info[i])
+                        print(is_valid[i])
+                        
                 (
                     replay_trajs,
                     replay_logr,
@@ -677,12 +690,13 @@ class PharmacoCondSamplingIterator(SamplingIterator):
                 ) = self.replay_buffer.sample(num_online)
 
                 # append the online trajectories to the offline ones
-                trajs[num_offline:] = replay_trajs
-                log_rewards[num_offline:] = replay_logr
-                flat_rewards[num_offline:] = replay_fr
-                cond_info[num_offline:] = replay_condinfo
-                is_valid[num_offline:] = replay_valid
-
+            
+                trajs.extend(replay_trajs)
+                log_rewards = torch.cat([log_rewards, replay_logr], dim=0)
+                flat_rewards = torch.cat([flat_rewards, replay_fr], dim=0)
+                cond_info.extend(replay_condinfo)
+                is_valid = torch.cat([is_valid, replay_valid], dim=0)
+                
                 # convert cond_info back to a dict
                 cond_info = {
                     k: torch.stack([d[k] for d in cond_info]) for k in cond_info[0]

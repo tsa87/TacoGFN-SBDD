@@ -593,17 +593,37 @@ class TrajectoryBalance(GFNAlgorithm):
 
         loss = traj_losses.mean() + reward_loss
 
+        eval_dict = batch.eval_dict
+        eval_info = {
+            **(
+                {
+                    f"offline_{i}": val[: batch.num_offline].mean(dim=0).item()
+                    for i, val in eval_dict.items()
+                }
+                if batch.num_offline > 0
+                else {}
+            ),
+            **(
+                {
+                    f"online_{i}": val[batch.num_offline : batch.num_offline + batch.num_online].mean(dim=0).item()
+                    for i, val in eval_dict.items()
+                }
+                if batch.num_online > 0
+                else {}
+            ),
+        }
+
         info = {
-            "offline_loss": traj_losses[: batch.num_offline].mean()
-            if batch.num_offline > 0
-            else 0,
-            "online_loss": traj_losses[batch.num_offline :].mean()
-            if batch.num_online > 0
-            else 0,
+            "offline_loss": (
+                traj_losses[: batch.num_offline].mean() if batch.num_offline > 0 else 0
+            ),
+            "online_loss": (
+                traj_losses[batch.num_offline : batch.num_offline + batch.num_online] .mean() if batch.num_online > 0 else 0
+            ),
             "reward_loss": reward_loss,
-            "invalid_trajectories": invalid_mask.sum() / batch.num_online
-            if batch.num_online > 0
-            else 0,
+            "invalid_trajectories": (
+                invalid_mask.sum() / batch.num_online if batch.num_online > 0 else 0
+            ),
             "invalid_logprob": (invalid_mask * traj_log_p_F).sum()
             / (invalid_mask.sum() + 1e-4),
             "invalid_losses": (invalid_mask * traj_losses).sum()
@@ -611,6 +631,8 @@ class TrajectoryBalance(GFNAlgorithm):
             "logZ": log_Z.mean(),
             "loss": loss.item(),
         }
+
+        info = {**info, **eval_info}
 
         return loss, info
 
@@ -1120,7 +1142,7 @@ class PharmacophoreTrajectoryBalance(TrajectoryBalance):
             **{
                 f"online_reward_{i}": reward.item()
                 for i, reward in enumerate(
-                    flat_rewards[batch.num_offline :].mean(dim=0)
+                    flat_rewards[batch.num_offline :  batch.num_offline + batch.num_online].mean(dim=0)
                     if batch.num_online > 0
                     else []
                 )
@@ -1139,7 +1161,7 @@ class PharmacophoreTrajectoryBalance(TrajectoryBalance):
             ),
             **(
                 {
-                    f"online_{i}": val[batch.num_offline :].mean(dim=0).item()
+                    f"online_{i}": val[batch.num_offline :  batch.num_offline + batch.num_online].mean(dim=0).item()
                     for i, val in eval_dict.items()
                 }
                 if batch.num_online > 0
@@ -1148,16 +1170,16 @@ class PharmacophoreTrajectoryBalance(TrajectoryBalance):
         }
 
         info = {
-            "offline_loss": traj_losses[: batch.num_offline].mean()
-            if batch.num_offline > 0
-            else 0,
-            "online_loss": traj_losses[batch.num_offline :].mean()
-            if batch.num_online > 0
-            else 0,
+            "offline_loss": (
+                traj_losses[: batch.num_offline].mean() if batch.num_offline > 0 else 0
+            ),
+            "online_loss": (
+                traj_losses[batch.num_offline :  batch.num_offline + batch.num_online].mean() if batch.num_online > 0 else 0
+            ),
             "reward_loss": reward_loss,
-            "invalid_trajectories": invalid_mask.sum() / batch.num_online
-            if batch.num_online > 0
-            else 0,
+            "invalid_trajectories": (
+                invalid_mask.sum() / batch.num_online if batch.num_online > 0 else 0
+            ),
             "invalid_logprob": (invalid_mask * traj_log_p_F).sum()
             / (invalid_mask.sum() + 1e-4),
             "invalid_losses": (invalid_mask * traj_losses).sum()
@@ -1551,7 +1573,7 @@ class PocketTrajectoryBalance(TrajectoryBalance):
             **{
                 f"online_reward_{i}": reward.item()
                 for i, reward in enumerate(
-                    flat_rewards[batch.num_offline :].mean(dim=0)
+                    flat_rewards[batch.num_offline :  batch.num_offline + batch.num_online].mean(dim=0)
                     if batch.num_online > 0
                     else []
                 )
@@ -1570,7 +1592,7 @@ class PocketTrajectoryBalance(TrajectoryBalance):
             ),
             **(
                 {
-                    f"online_{i}": val[batch.num_offline :].mean(dim=0).item()
+                    f"online_{i}": val[batch.num_offline :  batch.num_offline + batch.num_online].mean(dim=0).item()
                     for i, val in eval_dict.items()
                 }
                 if batch.num_online > 0
@@ -1579,16 +1601,16 @@ class PocketTrajectoryBalance(TrajectoryBalance):
         }
 
         info = {
-            "offline_loss": traj_losses[: batch.num_offline].mean()
-            if batch.num_offline > 0
-            else 0,
-            "online_loss": traj_losses[batch.num_offline :].mean()
-            if batch.num_online > 0
-            else 0,
+            "offline_loss": (
+                traj_losses[: batch.num_offline].mean() if batch.num_offline > 0 else 0
+            ),
+            "online_loss": (
+                traj_losses[batch.num_offline :  batch.num_offline + batch.num_online].mean() if batch.num_online > 0 else 0
+            ),
             "reward_loss": reward_loss,
-            "invalid_trajectories": invalid_mask.sum() / batch.num_online
-            if batch.num_online > 0
-            else 0,
+            "invalid_trajectories": (
+                invalid_mask.sum() / batch.num_online if batch.num_online > 0 else 0
+            ),
             "invalid_logprob": (invalid_mask * traj_log_p_F).sum()
             / (invalid_mask.sum() + 1e-4),
             "invalid_losses": (invalid_mask * traj_losses).sum()

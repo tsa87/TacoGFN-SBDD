@@ -7,9 +7,10 @@ channels:
   # - dglteam
 dependencies:
   - python=3.9
-  # - openbabel>=3.1.1
-  # - numba=0.57 # pharmaconet
-  # - rdkit
+  - openbabel>=3.1.1
+  - numba=0.57 # pharmaconet
+  - rdkit
+  - unidock
   - pip
   - pip:
     - -r requirements.txt

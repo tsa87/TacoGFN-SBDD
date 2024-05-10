@@ -30,3 +30,4 @@ wandb
 torchmetrics
 CairoSVG
 omegaconf>=2.3
+git+https://github.com/dptech-corp/Uni-Dock.git#egg=unidock_tools&subdirectory=unidock_tools
