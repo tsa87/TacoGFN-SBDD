@@ -237,9 +237,6 @@ def main():
 
     flags.FLAGS(sys.argv)
     model_state = torch.load(_MODEL_PATH.value)
-
-    model_state["cfg"]["pdbqt_folder"] = _REC_FOLDER.value
-    model_state["cfg"]["pocket_to_centroid"] = _POCKET_TO_CENTRIOD_PATH.value
     hps = dict(model_state["cfg"])
 
     hps.update(
@@ -249,6 +246,8 @@ def main():
             "validate_every": 0,
             "checkpoint_every": 100,
             "num_training_steps": 400,
+            "pdbqt_folder": _REC_FOLDER.value,
+            "pocket_to_centroid": _POCKET_TO_CENTRIOD_PATH.value,
             "task": {
                 **hps["task"],
                 "finetune": {
