@@ -14,7 +14,6 @@ from torch import Tensor, nn
 from torch.utils.data import DataLoader, Dataset
 
 from src.tacogfn.config import Config
-from src.tacogfn.data.pharmacophore import PharmacophoreGraphDataset
 from src.tacogfn.models import pharmaco_cond_graph_transformer
 from src.tacogfn.tasks.pocket_frag import PharmacophoreTrainer
 from src.tacogfn.tasks.utils import GeneratedStore
@@ -28,7 +27,7 @@ class UniDockFinetuneTask(GFNTask):
     def __init__(
         self,
         dataset: Dataset,
-        pharmaco_dataset: PharmacophoreGraphDataset,
+        pharmaco_dataset,
         cfg: Config,
         rng: np.random.Generator = None,
         wrap_model: Callable[[nn.Module], nn.Module] = None,
