@@ -6,7 +6,6 @@ from rdkit.Chem import AllChem, Descriptors
 from rdkit.Chem.Draw import rdMolDraw2D
 
 from src.tacogfn.utils import molecules, sascore
-from rdkit import DataStructs
 
 
 def convert_pdb_to_sdf(pdb_file: str, sdf_file: str) -> None:
@@ -282,6 +281,13 @@ def compute_diversity(mols):
         d = [1 - x for x in s]
         diversity.extend(d)
     return diversity
+
+
+def evaluate_properties2(mols):
+    qeds = [Descriptors.qed(mol) for mol in mols]
+    sas = [(10 - sascore.calculateScore(mol)) / 9 for mol in mols]
+    diversity = compute_diversity(mols)
+    return {"qeds": np.mean(qeds), "sas": np.mean(sas), "diversity": np.mean(diversity)}
 
 
 def compute_novelty(mols, ref_fps):

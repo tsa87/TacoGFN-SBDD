@@ -89,8 +89,8 @@ class Config:
     dock_pharmaco: str = MISSING
     dock_proxy: str = MISSING
     avg_score: str = MISSING
-    pdbqt_folder: str = MISSING
-    pocket_to_centroid: str = MISSING
+    pdbqt_folder: Optional[str] = None
+    pocket_to_centroid: Optional[str] = None
     info_only_dock_proxy: Optional[str] = None
     info_only_dock_pharmaco: Optional[str] = None
     seed: int = 0

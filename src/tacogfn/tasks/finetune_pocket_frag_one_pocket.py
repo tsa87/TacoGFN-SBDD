@@ -17,11 +17,11 @@ from src.tacogfn.config import Config
 from src.tacogfn.data.pharmacophore import PharmacophoreGraphDataset
 from src.tacogfn.models import pharmaco_cond_graph_transformer
 from src.tacogfn.tasks.pocket_frag import PharmacophoreTrainer
+from src.tacogfn.tasks.utils import GeneratedStore
 from src.tacogfn.trainer import FlatRewards, GFNTask, RewardScalar
 from src.tacogfn.utils import molecules, sascore
 from src.tacogfn.utils.conditioning import TemperatureConditional
 from src.tacogfn.utils.unidock import unidock_scores
-from src.tacogfn.tasks.utils import GeneratedStore
 
 
 class UniDockFinetuneTask(GFNTask):
@@ -63,7 +63,20 @@ class UniDockFinetuneTask(GFNTask):
         partition: str,
     ) -> Dict[str, Tensor]:
         pharmacophore_idxs = [self.pocket_idx for _ in range(n)]
-        cond_info = self.temperature_conditional.sample(n)
+
+        if partition == "train":
+            cond_info = self.temperature_conditional.sample(n)
+        else:
+            beta = (
+                np.array(self.temperature_conditional.cfg.dist_params[1])
+                .repeat(n)
+                .astype(np.float32)
+            )
+            beta_enc = torch.zeros(
+                (n, self.temperature_conditional.cfg.num_thermometer_dim)
+            )
+            conf_info = {"beta": torch.tensor(beta), "encoding": beta_enc}
+
         cond_info["pharmacophore"] = torch.as_tensor(pharmacophore_idxs)
         return cond_info
 
@@ -100,7 +113,9 @@ class UniDockFinetuneTask(GFNTask):
         preds = self.compute_docking_score(mols)
 
         preds[preds.isnan()] = 0
-        affinity_reward = (preds / -8.0 / 2).clip(0, 1) ** self.cfg.task.pharmaco_frag.docking_score_exp
+        affinity_reward = (preds / -8.0 / 2).clip(
+            0, 1
+        ) ** self.cfg.task.pharmaco_frag.docking_score_exp
 
         if self.cfg.task.pharmaco_frag.mol_adj != 0:
             mol_atom_count = [m.GetNumHeavyAtoms() for m in mols]
@@ -140,7 +155,9 @@ class UniDockFinetuneTask(GFNTask):
 
         infos = {
             "docking_score": preds,
-            "top_100": torch.as_tensor([self.generated_store.get_top_avg(100)]*len(mols)),
+            "top_100": torch.as_tensor(
+                [self.generated_store.get_top_avg(100)] * len(mols)
+            ),
             "qed": qeds,
             "sa": sas,
             "mw": mw,
@@ -188,19 +205,18 @@ class UniDockFinetuneTrainer(PharmacophoreTrainer):
 def main():
     """Example of how this model can be run."""
     _MODEL_PATH = flags.DEFINE_string(
-        "model_path",
-        "logs/2024_01_11_run_pharmaco_frag_beta_qed/model_state.pt",
-        "Path to the model state file.",
+        "model_path", None, "Path to the model state file.", required=True
     )
 
     _POCKET_INDEX = flags.DEFINE_integer(
         "pocket_index",
-        0,
+        None,
         "Index of the pocket to finetune the model on.",
+        required=True,
     )
     _BATCH_SIZE = flags.DEFINE_integer(
         "batch_size",
-        8,
+        64,
         "Batch size for the model.",
     )
     _REC_FOLDER = flags.DEFINE_string(
@@ -222,14 +238,17 @@ def main():
     flags.FLAGS(sys.argv)
     model_state = torch.load(_MODEL_PATH.value)
 
+    model_state["cfg"]["pdbqt_folder"] = _REC_FOLDER.value
+    model_state["cfg"]["pocket_to_centroid"] = _POCKET_TO_CENTRIOD_PATH.value
     hps = dict(model_state["cfg"])
+
     hps.update(
         {
-            "log_dir": _LOG_DIR.value,
+            "log_dir": f"{_LOG_DIR.value}/{_POCKET_INDEX.value}",
             "num_workers": 0,
-            "pocket_to_centroid": _POCKET_TO_CENTRIOD_PATH.value,
-            "pdbqt_folder": _REC_FOLDER.value,
-            "validate_every": 100,
+            "validate_every": 0,
+            "checkpoint_every": 100,
+            "num_training_steps": 400,
             "task": {
                 **hps["task"],
                 "finetune": {
@@ -237,25 +256,20 @@ def main():
                 },
                 "pharmaco_frag": {
                     **hps["task"]["pharmaco_frag"],
-                    'docking_score_exp': 1.5,   
-                }
+                    "docking_score_exp": 1.5,
+                    "reward_multiplier": 5,
+                },
             },
-            "replay": {
-              "use": False,
-              "keep_top": True,
-              "capacity": 2500,
-              "warmup": 1000,
-            },
-            "algo": {**hps["algo"], "global_batch_size": _BATCH_SIZE.value},
-            # "cond": {
-            #     "temperature": {
-            #         "sample_dist": "uniform",
-            #         "dist_params": [
-            #             32.0,
-            #             64.0
-            #         ]
-            #     }
+            # "replay": {
+            #     "use": False,
+            #     "keep_top": True,
+            #     "capacity": 2500,
+            #     "warmup": 1000,
             # },
+            "algo": {**hps["algo"], "global_batch_size": _BATCH_SIZE.value},
+            "cond": {
+                "temperature": {"sample_dist": "uniform", "dist_params": [32.0, 64.0]}
+            },
         }
     )
 
