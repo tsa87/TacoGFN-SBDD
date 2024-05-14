@@ -26,8 +26,14 @@ RUN conda env create -f environment.yml
 # For building purposes, we install the package outside the environment, but ideally this should be inside the environment.
 WORKDIR /app/TacoGFN-SBDD/src/molvoxel
 RUN pip install -e .
+# Install the Uni-Dock tools
+RUN pip install git+https://github.com/dptech-corp/Uni-Dock.git#subdirectory=unidock_tools
+
+WORKDIR /app/TacoGFN-SBDD
+RUN git pull
 
 # Setting up the entry point script
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+
