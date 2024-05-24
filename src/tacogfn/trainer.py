@@ -343,14 +343,15 @@ class GFNTrainer:
         for it, batch in zip(range(start, 1 + num_training_steps), cycle(train_dl)):
             epoch_idx = it // epoch_length
             batch_idx = it % epoch_length
-            if (
-                self.replay_buffer is not None
-                and len(self.replay_buffer) < self.replay_buffer.warmup
-            ):
-                logger.info(
-                    f"iteration {it} : warming up replay buffer {len(self.replay_buffer)}/{self.replay_buffer.warmup}"
-                )
-                continue
+            # if (
+            #     self.replay_buffer is not None
+            #     and len(self.replay_buffer) < self.replay_buffer.warmup
+            # ):
+            #     logger.info(
+            #         f"iteration {it} : warming up replay buffer {len(self.replay_buffer)}/{self.replay_buffer.warmup}"
+            #     )
+            #     continue
+
             info = self.train_batch(batch.to(self.device), epoch_idx, batch_idx, it)
             self.log(info, it, "train")
             if it % self.print_every == 0:

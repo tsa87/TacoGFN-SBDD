@@ -1,12 +1,12 @@
+import concurrent.futures
 import glob
 import os
 import tempfile
-
-import concurrent.futures
 from concurrent.futures import ThreadPoolExecutor
-from tqdm import tqdm
+
 import numpy as np
 from rdkit import Chem
+from tqdm import tqdm
 
 from src.tacogfn.utils.molecules import write_sdf_from_smile
 
@@ -34,7 +34,7 @@ def process_smiles(index_smiles, folder):
     return None
 
 
-def unidock_scores(smiles_list, pocket_file, pocket_x, pocket_y, pocket_z):
+def unidock_scores(smiles_list, pocket_file, pocket_x, pocket_y, pocket_z, mode="fast"):
     docking_scores = [0] * len(smiles_list)
 
     with tempfile.TemporaryDirectory() as folder:
@@ -45,11 +45,18 @@ def unidock_scores(smiles_list, pocket_file, pocket_x, pocket_y, pocket_z):
         #             f.write(f"{folder}/{i}.sdf\n")
         with ThreadPoolExecutor() as executor:
             # Submit all tasks to the executor
-            futures = [executor.submit(process_smiles, (i, smiles), folder) for i, smiles in enumerate(smiles_list)]
-            
+            futures = [
+                executor.submit(process_smiles, (i, smiles), folder)
+                for i, smiles in enumerate(smiles_list)
+            ]
+
             # Collect results as they complete, showing a progress bar
             sdf_paths = []
-            for future in tqdm(concurrent.futures.as_completed(futures), total=len(futures), desc="Processing SMILES"):
+            for future in tqdm(
+                concurrent.futures.as_completed(futures),
+                total=len(futures),
+                desc="Processing SMILES",
+            ):
                 result = future.result()
                 if result:
                     sdf_paths.append(result)
@@ -59,8 +66,14 @@ def unidock_scores(smiles_list, pocket_file, pocket_x, pocket_y, pocket_z):
                 if sdf_path:
                     f.write(f"{sdf_path}\n")
 
-
         docking_cmd = f"unidocktools unidock_pipeline -r {pocket_file} -i {folder}/smiles_list.txt -sd {folder}/docking -cx {pocket_x} -cy {pocket_y} -cz {pocket_z}"
+        if mode == "fast":
+            docking_cmd += " --exhaustiveness 128 --max_step 20"
+        elif mode == "balance":
+            docking_cmd += " --exhaustiveness 384 --max_step 40"
+        elif mode == "detail":
+            docking_cmd += " --exhaustiveness 512 --max_step 40"
+
         os.system(docking_cmd)
 
         input_sdf_file_name_list = glob.glob(f"{folder}/*.sdf")

@@ -2,6 +2,7 @@ import json
 import os
 import shutil
 import sys
+import time
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
@@ -51,6 +52,7 @@ class UniDockFinetuneTask(GFNTask):
         self.num_cond_dim = self.temperature_conditional.encoding_size()
 
         self.generated_store = GeneratedStore(cfg, self.pdb_id)
+        self.unidock_mode = self.cfg.task.finetune.unidock_mode
 
     def flat_reward_transform(self, y: Union[float, Tensor]) -> FlatRewards:
         return FlatRewards(torch.as_tensor(y))
@@ -92,7 +94,12 @@ class UniDockFinetuneTask(GFNTask):
     ) -> Tensor:
         smiles_list = [Chem.MolToSmiles(mol) for mol in mols]
         docking_scores = unidock_scores(
-            smiles_list, self.rec_path, self.pocket_x, self.pocket_y, self.pocket_z
+            smiles_list,
+            self.rec_path,
+            self.pocket_x,
+            self.pocket_y,
+            self.pocket_z,
+            self.unidock_mode,
         )
         return torch.as_tensor(docking_scores)
 
@@ -101,6 +108,7 @@ class UniDockFinetuneTask(GFNTask):
         mols: List[RDMol],
         pharmacophore_ids: Tensor,
         add_to_store: bool = True,
+        start_time: float = None,
     ) -> Tuple[FlatRewards, Tensor, Dict[str, Tensor]]:
         is_valid = torch.tensor([i is not None for i in mols]).bool()
         if not is_valid.any():
@@ -112,9 +120,13 @@ class UniDockFinetuneTask(GFNTask):
         preds = self.compute_docking_score(mols)
 
         preds[preds.isnan()] = 0
-        affinity_reward = (preds / -8.0 / 2).clip(
-            0, 1
-        ) ** self.cfg.task.pharmaco_frag.docking_score_exp
+        
+        if self.cfg.task.pharmaco_frag.docking_score_sigmoid:
+            affinity_reward = 1 / (1 + np.exp((preds+8.18)/2))            
+        else:
+            affinity_reward = (preds / -8.0 / 2).clip(
+                0, 1
+            ) ** self.cfg.task.pharmaco_frag.docking_score_exp
 
         if self.cfg.task.pharmaco_frag.mol_adj != 0:
             mol_atom_count = [m.GetNumHeavyAtoms() for m in mols]
@@ -154,14 +166,18 @@ class UniDockFinetuneTask(GFNTask):
 
         infos = {
             "docking_score": preds,
-            "top_100": torch.as_tensor(
-                [self.generated_store.get_top_avg(100)] * len(mols)
-            ),
             "qed": qeds,
             "sa": sas,
             "mw": mw,
             "diversity": diversity,
         }
+
+        top_100_stats = self.generated_store.get_top_avg(100)
+        for k, v in top_100_stats.items():
+            infos[k] = torch.as_tensor([v] * len(mols))
+
+        if start_time is not None:
+            infos["time"] = torch.as_tensor([time.time() - start_time] * len(mols))
 
         self.generated_store.push(mols, preds)
         return (FlatRewards(reward), is_valid, infos)
@@ -251,11 +267,13 @@ def main():
                 **hps["task"],
                 "finetune": {
                     "pocket_index": _POCKET_INDEX.value,
+                    "unidock_mode": "balance",
                 },
                 "pharmaco_frag": {
                     **hps["task"]["pharmaco_frag"],
                     "docking_score_exp": 1.5,
                     "reward_multiplier": 5,
+                    # "docking_score_sigmoid": True,
                 },
             },
             # "replay": {

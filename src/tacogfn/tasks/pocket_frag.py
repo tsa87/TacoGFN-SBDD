@@ -4,6 +4,7 @@ import pathlib
 import shutil
 import socket
 import sys
+import time
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
@@ -15,7 +16,6 @@ from rdkit.Chem import Descriptors
 from rdkit.Chem.rdchem import Mol as RDMol
 from torch import Tensor, nn
 from torch.utils.data import DataLoader, Dataset
-from src.tacogfn.envs.frag_mol_env import FragMolBuildingEnvContext
 
 from src.tacogfn.algo.trajectory_balance import (
     PharmacophoreTrajectoryBalance,
@@ -31,9 +31,11 @@ from src.tacogfn.data.pharmacophore import (
 from src.tacogfn.data.pocket import PocketDB
 from src.tacogfn.data.sampling_iterator import PharmacoCondSamplingIterator
 from src.tacogfn.envs import frag_mol_env
+from src.tacogfn.envs.frag_mol_env import FragMolBuildingEnvContext
 from src.tacogfn.eval.models.baseline import BaseAffinityPrediction
 from src.tacogfn.models import bengio2021flow, pharmaco_cond_graph_transformer
 from src.tacogfn.online_trainer import StandardOnlineTrainer
+from src.tacogfn.tasks.utils import time_profile
 from src.tacogfn.trainer import FlatRewards, GFNTask, RewardScalar
 from src.tacogfn.utils import molecules, sascore
 from src.tacogfn.utils.conditioning import TemperatureConditional
@@ -65,6 +67,12 @@ class PharmacophoreTask(GFNTask):
 
         self.temperature_conditional = TemperatureConditional(cfg, rng)
         self.num_cond_dim = self.temperature_conditional.encoding_size()
+
+        self.same_pocket_each_batch = (
+            True
+            if cfg.task.pharmaco_frag.ablation == "same_pocket_graph_each_batch"
+            else False
+        )
 
         self.models = self._load_task_models()
 
@@ -113,9 +121,18 @@ class PharmacophoreTask(GFNTask):
         train_it: int,
         partition: str,
     ) -> Dict[str, Tensor]:
-        pharmacophore_idxs = self.pharmaco_dataset.sample_idx(n, partition=partition)
-        cond_info = self.temperature_conditional.sample(n)
-        cond_info["pharmacophore"] = torch.as_tensor(pharmacophore_idxs)
+        if self.same_pocket_each_batch:
+            pharmacophore_idx = self.pharmaco_dataset.sample_idx(
+                1, partition=partition
+            )[0]
+            cond_info = self.temperature_conditional.sample(n)
+            cond_info["pharmacophore"] = torch.as_tensor([pharmacophore_idx] * n)
+        else:
+            pharmacophore_idxs = self.pharmaco_dataset.sample_idx(
+                n, partition=partition
+            )
+            cond_info = self.temperature_conditional.sample(n)
+            cond_info["pharmacophore"] = torch.as_tensor(pharmacophore_idxs)
         return cond_info
 
     def cond_info_to_logreward(
@@ -187,6 +204,7 @@ class PharmacophoreTask(GFNTask):
         self,
         mols: List[RDMol],
         pharmacophore_ids: Tensor,
+        start_time: float = None,
     ) -> Tuple[FlatRewards, Tensor, Dict[str, Tensor]]:
         is_valid = torch.tensor([i is not None for i in mols]).bool()
         if not is_valid.any():
@@ -210,23 +228,31 @@ class PharmacophoreTask(GFNTask):
             ],
             dtype=torch.float,
         )
-
         preds[preds.isnan()] = 0
-        affinity_reward = (preds / avg_preds / 2).clip(0, 1)
+        affinity_reward = (
+            1 / (1 + np.exp((preds - avg_preds) / 2))
+        ) ** self.cfg.task.pharmaco_frag.docking_score_exp
 
         if self.cfg.task.pharmaco_frag.mol_adj != 0:
             mol_atom_count = [m.GetNumHeavyAtoms() for m in mols]
             mol_adj = torch.tensor(
                 [1 / c ** (self.cfg.task.pharmaco_frag.mol_adj) for c in mol_atom_count]
             )
-            affinity_reward *= mol_adj
+            affinity_reward = affinity_reward * mol_adj * 3
+        affinity_reward = affinity_reward.clip(0, 1)
 
         # 1 for qed above 0.7, linear decay to 0 from 0.7 to 0.0
         qeds = torch.as_tensor([Descriptors.qed(mol) for mol in mols])
-        qed_reward = qeds.clip(0.0, self.cfg.task.pharmaco_frag.max_qed_reward) / self.cfg.task.pharmaco_frag.max_qed_reward
+        qed_reward = (
+            qeds.clip(0.0, self.cfg.task.pharmaco_frag.max_qed_reward)
+            / self.cfg.task.pharmaco_frag.max_qed_reward
+        )
 
         sas = torch.as_tensor([(10 - sascore.calculateScore(mol)) / 9 for mol in mols])
-        sa_reward = sas.clip(0.0, self.cfg.task.pharmaco_frag.max_sa_reward) / self.cfg.task.pharmaco_frag.max_sa_reward
+        sa_reward = (
+            sas.clip(0.0, self.cfg.task.pharmaco_frag.max_sa_reward)
+            / self.cfg.task.pharmaco_frag.max_sa_reward
+        )
 
         # 1 until 300 then linear decay to 0 until 1000
         mw = torch.as_tensor(
@@ -261,6 +287,9 @@ class PharmacophoreTask(GFNTask):
             infos["info_only_docking_score"] = info_preds
         else:
             infos["info_only_docking_score"] = preds
+
+        if start_time is not None:
+            infos["time"] = torch.as_tensor([time.time() - start_time] * len(mols))
 
         return (FlatRewards(reward), is_valid, infos)
 
@@ -317,6 +346,12 @@ class PharmacophoreTrainer(StandardOnlineTrainer):
                     do_bck=self.cfg.algo.tb.do_parameterize_p_b,
                 )
             )
+        elif self.cfg.task.pharmaco_frag.ablation == "same_pocket_graph_each_batch":
+            self.model = pharmaco_cond_graph_transformer.SinglePocketConditionalGraphTransformerGFN(
+                self.ctx,
+                self.cfg,
+                do_bck=self.cfg.algo.tb.do_parameterize_p_b,
+            )
         else:
             self.model = pharmaco_cond_graph_transformer.PharmacophoreConditionalGraphTransformerGFN(
                 self.ctx,
@@ -325,7 +360,10 @@ class PharmacophoreTrainer(StandardOnlineTrainer):
             )
 
     def setup_algo(self):
-        if self.cfg.task.pharmaco_frag.ablation == "pocket_graph":
+        if (
+            self.cfg.task.pharmaco_frag.ablation == "pocket_graph"
+            or self.cfg.task.pharmaco_frag.ablation == "same_pocket_graph_each_batch"
+        ):
             self.algo = PocketTrajectoryBalance(
                 self.env,
                 self.ctx,
@@ -505,7 +543,10 @@ class PharmacophoreTrainer(StandardOnlineTrainer):
             verbose=True,
         )
 
-        if self.cfg.task.pharmaco_frag.ablation == "pocket_graph":
+        if (
+            self.cfg.task.pharmaco_frag.ablation == "pocket_graph"
+            or self.cfg.task.pharmaco_frag.ablation == "same_pocket_graph_each_batch"
+        ):
             assert self.cfg.pocket_db is not None
             self.pocket_db = PocketDB(
                 self.cfg.pocket_db,
@@ -519,6 +560,7 @@ class PharmacophoreTrainer(StandardOnlineTrainer):
         super().setup()
 
 
+# @time_profile()
 def main():
     """Example of how this model can be run."""
     _HPS_PATH = flags.DEFINE_string(

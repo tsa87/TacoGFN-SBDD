@@ -15,6 +15,7 @@ class SEHTaskConfig:
 @dataclass
 class UniDockFinetuneTaskConfig:
     pocket_index: int = 0
+    unidock_mode: str = "balance"
 
 
 @dataclass
@@ -29,6 +30,7 @@ class PharmacoFragTaskConfig:
 
     fragment_type: str = "gflownet"  # or zinc250k_50cutoff_brics
     affinity_predictor: str = "beta"  # or "alpha"
+    docking_score_sigmoid: bool = False
     docking_score_exp: float = 1.0
     max_qed_reward: float = 0.7  # no extra reward for qed above this
     max_sa_reward: float = 0.75  # no extra reward for sa below this

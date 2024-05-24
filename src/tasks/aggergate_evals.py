@@ -8,6 +8,7 @@ import sys
 from collections import defaultdict
 
 import numpy as np
+import torch
 from absl import flags
 from tabulate import tabulate
 
@@ -37,7 +38,7 @@ def is_novel_okay(novelty, qed, sas):
 
 
 def is_hit(qed, sas, docking_score):
-    if qed > 0.5 and sas > 0.5 and docking_score < -8:
+    if qed > 0.25 and sas > 0.59 and docking_score < -8.18:
         return True
     return False
 
@@ -60,6 +61,8 @@ def main():
 
     not_enough_novel_okay_molecules = []
     not_enough_okay_molecules = []
+
+    pocket_to_score = torch.load("dataset/pocket_to_affinity.pt")
 
     for key, val in eval_data.items():
         if len(val["qeds"]) == 0:
@@ -122,6 +125,16 @@ def main():
                 is_okay_list.append(is_okay(val["qeds"][i], val["sas"][i]))
                 is_novel_okay_list.append(
                     is_novel_okay(val["novelty"][i], val["qeds"][i], val["sas"][i])
+                )
+
+            if pocket_to_score[key] is not None:
+                all_vals["high_affinity"].append(
+                    np.mean(
+                        [
+                            1 if score < pocket_to_score[key] else 0
+                            for score in val["docking_scores"]
+                        ]
+                    )
                 )
 
             all_vals["hit"].append(

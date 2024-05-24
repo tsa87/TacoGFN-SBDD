@@ -5,6 +5,7 @@ https://github.com/recursionpharma/gflownet
 
 import os
 import sqlite3
+import time
 from collections.abc import Iterable
 from copy import deepcopy
 from typing import Callable, List
@@ -523,6 +524,7 @@ class PharmacoCondSamplingIterator(SamplingIterator):
             self.log.connect(self.log_path)
 
         for idcs in self._idx_iterator():
+            start_time = time.time()
             num_offline = idcs.shape[0]  # This is in [0, self.offline_batch_size]
             # Sample conditional info such as temperature, trade-off weights, etc.
             if self.sample_cond_info:
@@ -598,6 +600,7 @@ class PharmacoCondSamplingIterator(SamplingIterator):
                         self.task.compute_flat_rewards(
                             mols,
                             cond_info["pharmacophore"][valid_idcs],
+                            start_time=start_time,
                         )
                     )
                     assert (
@@ -607,7 +610,7 @@ class PharmacoCondSamplingIterator(SamplingIterator):
                     valid_idcs = valid_idcs[m_is_valid]
                     pred_reward = torch.zeros((num_online, online_flat_rew.shape[1]))
                     pred_reward[valid_idcs - num_offline] = online_flat_rew
-                    is_valid[num_offline:num_offline+num_online] = False
+                    is_valid[num_offline : num_offline + num_online] = False
                     is_valid[valid_idcs] = True
                     flat_rewards += list(pred_reward)
                     # Override the is_valid key in case the task made some mols invalid
@@ -680,23 +683,28 @@ class PharmacoCondSamplingIterator(SamplingIterator):
                         print(flat_rewards[i])
                         print(cond_info[i])
                         print(is_valid[i])
-                        
-                (
-                    replay_trajs,
-                    replay_logr,
-                    replay_fr,
-                    replay_condinfo,
-                    replay_valid,
-                ) = self.replay_buffer.sample(num_online)
 
-                # append the online trajectories to the offline ones
-            
-                trajs.extend(replay_trajs)
-                log_rewards = torch.cat([log_rewards, replay_logr], dim=0)
-                flat_rewards = torch.cat([flat_rewards, replay_fr], dim=0)
-                cond_info.extend(replay_condinfo)
-                is_valid = torch.cat([is_valid, replay_valid], dim=0)
-                
+                if len(self.replay_buffer) < self.replay_buffer.warmup:
+                    print(
+                        f"warming up replay buffer {len(self.replay_buffer)}/{self.replay_buffer.warmup}"
+                    )
+                else:
+                    (
+                        replay_trajs,
+                        replay_logr,
+                        replay_fr,
+                        replay_condinfo,
+                        replay_valid,
+                    ) = self.replay_buffer.sample(num_online)
+
+                    # append the online trajectories to the offline ones
+
+                    trajs.extend(replay_trajs)
+                    log_rewards = torch.cat([log_rewards, replay_logr], dim=0)
+                    flat_rewards = torch.cat([flat_rewards, replay_fr], dim=0)
+                    cond_info.extend(replay_condinfo)
+                    is_valid = torch.cat([is_valid, replay_valid], dim=0)
+
                 # convert cond_info back to a dict
                 cond_info = {
                     k: torch.stack([d[k] for d in cond_info]) for k in cond_info[0]

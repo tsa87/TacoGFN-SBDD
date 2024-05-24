@@ -206,7 +206,7 @@ class PocketMOOTask(PharmacophoreTask):
                 (
                     min(0, self.avg_prediction_for_pocket[pdb_id])
                     if pdb_id in self.avg_prediction_for_pocket
-                    else -7.0
+                    else -8.0
                 )
                 for pdb_id in pdb_ids
             ],
@@ -214,15 +214,18 @@ class PocketMOOTask(PharmacophoreTask):
         )
         preds[preds.isnan()] = 0
 
-        affinity_reward = (preds - avg_preds).clip(
-            self.cfg.task.pharmaco_frag.max_dock_reward, 0
-        ) + torch.max(
-            preds, avg_preds
-        ) * self.cfg.task.pharmaco_frag.leaky_coefficient  # leaky reward up to avg
+        # affinity_reward = (preds - avg_preds).clip(
+        #     self.cfg.task.pharmaco_frag.max_dock_reward, 0
+        # ) + torch.max(
+        #     preds, avg_preds
+        # ) * self.cfg.task.pharmaco_frag.leaky_coefficient  # leaky reward up to avg
 
-        affinity_reward /= (
-            self.cfg.task.pharmaco_frag.max_dock_reward
-        )  # still normalize reward to be in range [0, 1]
+        # affinity_reward /= (
+        #     self.cfg.task.pharmaco_frag.max_dock_reward
+        # )  # still normalize reward to be in range [0, 1]
+
+        affinity_reward = 1 / (1 + np.exp((preds - avg_preds) / 2))
+
         if self.cfg.task.pharmaco_frag.mol_adj != 0:
             mol_atom_count = [m.GetNumHeavyAtoms() for m in mols]
             mol_adj = torch.tensor(
@@ -236,22 +239,16 @@ class PocketMOOTask(PharmacophoreTask):
         # 1 for qed above 0.7, linear decay to 0 from 0.7 to 0.0
         qeds = torch.as_tensor([Descriptors.qed(mol) for mol in mols])
 
-        qed_reward = torch.pow(
-            (
-                qeds.clip(0.0, self.cfg.task.pharmaco_frag.max_qed_reward)
-                / self.cfg.task.pharmaco_frag.max_qed_reward
-            ),
-            self.cfg.task.pharmaco_frag.qed_exponent,
+        qed_reward = (
+            qeds.clip(0.0, self.cfg.task.pharmaco_frag.max_qed_reward)
+            / self.cfg.task.pharmaco_frag.max_qed_reward
         )
         flat_r.append(qed_reward)
 
         sas = torch.as_tensor([(10 - sascore.calculateScore(mol)) / 9 for mol in mols])
-        sa_reward = torch.pow(
-            (
-                sas.clip(0.0, self.cfg.task.pharmaco_frag.max_sa_reward)
-                / self.cfg.task.pharmaco_frag.max_sa_reward
-            ),
-            self.cfg.task.pharmaco_frag.sa_exponent,
+        sa_reward = (
+            sas.clip(0.0, self.cfg.task.pharmaco_frag.max_sa_reward)
+            / self.cfg.task.pharmaco_frag.max_sa_reward
         )
         flat_r.append(sa_reward)
 
