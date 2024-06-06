@@ -10,12 +10,13 @@ from rdkit import Chem
 from rdkit.Chem import Descriptors
 from tqdm import tqdm
 
-from src.tacogfn.eval import docking
+# from src.tacogfn.eval import docking
 from src.tacogfn.utils import misc, molecules, sascore
+from src.tacogfn.utils.unidock import unidock_scores
 
 _REC_FOLDER = flags.DEFINE_string(
     "rec_folder",
-    "dataset/crossdock_pdbqt",
+    "dataset/crossdocktest_pdbqt",
     "Path to the folder containing the receptor files.",
 )
 
@@ -63,31 +64,31 @@ _DOCK = flags.DEFINE_boolean(
 )
 
 
-def compute_docking_scores(
-    pocket_id: str,
-    smiles_list: list[str],
-    centroid: tuple[float, float, float],
-):
-    docking_res = []
-    rec_path = os.path.join(
-        _REC_FOLDER.value,
-        f"{pocket_id}_rec.pdbqt",
-    )
+# def compute_docking_scores(
+#     pocket_id: str,
+#     smiles_list: list[str],
+#     centroid: tuple[float, float, float],
+# ):
+#     docking_res = []
+#     rec_path = os.path.join(
+#         _REC_FOLDER.value,
+#         f"{pocket_id}_rec.pdbqt",
+#     )
 
-    n = len(smiles_list)
-    with tqdm(total=n, desc="Docking Progress") as pbar:
-        # Use ProcessPoolExecutor to execute the tasks in parallel
-        with concurrent.futures.ProcessPoolExecutor() as executor:
-            for result in executor.map(
-                docking.default_compute_docking_score_from_smiles,
-                [rec_path] * n,
-                smiles_list,
-                [centroid] * n,
-            ):
-                docking_res.append(result)
-                pbar.update(1)
+#     n = len(smiles_list)
+#     with tqdm(total=n, desc="Docking Progress") as pbar:
+#         # Use ProcessPoolExecutor to execute the tasks in parallel
+#         with concurrent.futures.ProcessPoolExecutor() as executor:
+#             for result in executor.map(
+#                 docking.default_compute_docking_score_from_smiles,
+#                 [rec_path] * n,
+#                 smiles_list,
+#                 [centroid] * n,
+#             ):
+#                 docking_res.append(result)
+#                 pbar.update(1)
 
-    return docking_res
+#     return docking_res
 
 
 def main() -> None:
@@ -117,11 +118,9 @@ def main() -> None:
         novelty = molecules.compute_novelty(mols, ref_fps)
 
         evaluated_results[pocket] = {
-            # "time": time,
             "smiles": smiles,
             "qeds": qeds,
             "sas": sas,
-            # "preds": preds,
             "diversity": diversity,
             "novelty": novelty,
             "centroid": centroid,
@@ -132,13 +131,25 @@ def main() -> None:
             evaluated_results[pocket]["time"] = val["time"]
         if "preds" in val.keys():
             evaluated_results[pocket]["preds"] = val["preds"]
-
         if "docking_scores" in val.keys():
             evaluated_results[pocket]["docking_scores"] = val["docking_scores"]
         else:
             if _DOCK.value:
-                docking_scores = compute_docking_scores(pocket, smiles, centroid)
-                evaluated_results[pocket]["docking_scores"] = docking_scores
+                pocket_file = os.path.join(
+                    _REC_FOLDER.value,
+                    f"{pocket}_rec.pdbqt",
+                )
+                docking_scores = unidock_scores(
+                    smiles,
+                    pocket_file,
+                    centroid[0],
+                    centroid[1],
+                    centroid[2],
+                    mode="balance",
+                )
+                evaluated_results[pocket]["docking_scores"] = [
+                    float(s) for s in docking_scores
+                ]
 
     filename = Path(_MOLECULES_PATH.value.split("/")[-1]).stem
     save_path = os.path.join(_RESULTS_FOLDER.value, f"{filename}_evaluated.json")

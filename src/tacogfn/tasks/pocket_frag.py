@@ -127,6 +127,30 @@ class PharmacophoreTask(GFNTask):
             )[0]
             cond_info = self.temperature_conditional.sample(n)
             cond_info["pharmacophore"] = torch.as_tensor([pharmacophore_idx] * n)
+        elif self.cfg.task.pharmaco_frag.ablation == "affinity_predictor_pocket_repr":
+            pharmacophore_idxs = self.pharmaco_dataset.sample_idx(
+                n, partition=partition
+            )
+            cond_info = self.temperature_conditional.sample(n)
+
+            pdb_ids = self.pharmaco_dataset.get_keys_from_idxs(pharmacophore_idxs)
+            pocket_repr_list = []
+            for pdb_id in pdb_ids:
+                try:
+                    cache = torch.load(
+                        os.path.join(dock_pharmaco_folder, f"{pdb_id}_rec.pt"),
+                        map_location="cpu",
+                    )
+                    pocket_repr = cache["pocket_features"]
+                except:
+                    pocket_repr = torch.zeros(256)
+                pocket_repr_list.append(pocket_repr)
+
+            pocket_repr_list = torch.stack(pocket_repr_list)
+            cond_info["encoding"] = torch.concat(
+                [cond_info["encoding"], pocket_repr_list], dim=-1
+            )
+            cond_info["pharmacophore"] = torch.as_tensor(pharmacophore_idxs)
         else:
             pharmacophore_idxs = self.pharmaco_dataset.sample_idx(
                 n, partition=partition
@@ -228,10 +252,22 @@ class PharmacophoreTask(GFNTask):
             ],
             dtype=torch.float,
         )
+
         preds[preds.isnan()] = 0
-        affinity_reward = (
-            1 / (1 + np.exp((preds - avg_preds) / 2))
-        ) ** self.cfg.task.pharmaco_frag.docking_score_exp
+
+        affinity_reward = (preds - avg_preds).clip(-5.0, 0) + torch.max(
+            preds, avg_preds
+        ) * 0.2
+        affinity_reward /= -5.0
+        # still normalize reward to be in range [0, 1]
+
+        # affinity_reward = (
+        #     torch.log(1 + torch.exp(-(preds - avg_preds) / 1.5))
+        #     ** self.cfg.task.pharmaco_frag.docking_score_exp
+        # ).clip(0, 1)
+        # affinity_reward = (
+        #     1 / (1 + np.exp((preds - avg_preds) / 2))
+        # ) ** self.cfg.task.pharmaco_frag.docking_score_exp
 
         if self.cfg.task.pharmaco_frag.mol_adj != 0:
             mol_atom_count = [m.GetNumHeavyAtoms() for m in mols]
@@ -347,7 +383,13 @@ class PharmacophoreTrainer(StandardOnlineTrainer):
                 )
             )
         elif self.cfg.task.pharmaco_frag.ablation == "same_pocket_graph_each_batch":
-            self.model = pharmaco_cond_graph_transformer.SinglePocketConditionalGraphTransformerGFN(
+            self.model = pharmaco_cond_graph_transformer.NoPharmacophoreConditionalGraphTransformerGFN(
+                self.ctx,
+                self.cfg,
+                do_bck=self.cfg.algo.tb.do_parameterize_p_b,
+            )
+        elif self.cfg.task.pharmaco_frag.ablation == "affinity_predictor_pocket_repr":
+            self.model = pharmaco_cond_graph_transformer.FixedLengthConditionalGraphTransformerGFN(
                 self.ctx,
                 self.cfg,
                 do_bck=self.cfg.algo.tb.do_parameterize_p_b,

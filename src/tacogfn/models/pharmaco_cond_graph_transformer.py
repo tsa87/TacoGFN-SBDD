@@ -192,10 +192,6 @@ class PharmacophoreConditionalGraphTransformerGFN(
 class NoPharmacophoreConditionalGraphTransformerGFN(
     graph_transformer.GraphTransformerGFN
 ):
-    """This models takes a HeteroData object with two graphs, one for the
-    compound and one for the pharmacophore.
-    """
-
     def __init__(
         self,
         env_ctx,
@@ -223,6 +219,51 @@ class NoPharmacophoreConditionalGraphTransformerGFN(
 
         self.logZ = graph_transformer.mlp(
             env_ctx.num_cond_dim,
+            num_emb * 2,
+            1,
+            2,
+        )
+
+    def forward(self, g, cond):
+        mol_g = hetero_batch_to_batch(g, "compound")
+        node_embeddings, graph_embeddings = self.transf(mol_g, cond)
+        return self._forward_after_transf(mol_g, node_embeddings, graph_embeddings)
+
+    def compute_logZ(self, cond_info, pharmaco_data):
+        return self.logZ(cond_info)
+
+
+class FixedLengthConditionalGraphTransformerGFN(
+    graph_transformer.GraphTransformerGFN
+):
+    def __init__(
+        self,
+        env_ctx,
+        cfg,
+        pocket_cond_dim=256,
+        num_graph_out=1,
+        do_bck=False,
+    ):
+        super().__init__(
+            env_ctx,
+            cfg,
+            num_graph_out=num_graph_out,
+            do_bck=do_bck,
+        )
+        num_emb = cfg.model.num_emb
+
+        self.transf = graph_transformer.GraphTransformer(
+            x_dim=env_ctx.num_node_dim,
+            e_dim=env_ctx.num_edge_dim,
+            g_dim=env_ctx.num_cond_dim + pocket_cond_dim,
+            num_emb=num_emb,
+            num_layers=cfg.model.num_layers,
+            num_heads=cfg.model.graph_transformer.num_heads,
+            ln_type=cfg.model.graph_transformer.ln_type,
+        )
+
+        self.logZ = graph_transformer.mlp(
+            env_ctx.num_cond_dim + pocket_cond_dim,
             num_emb * 2,
             1,
             2,
