@@ -1,6 +1,6 @@
 """ Example Usage
 python3 src/tasks/aggergate_evals.py  --eval_paths 
-    /home/tsa87/refactor-tacogfn/misc/generated_molecules/20240124_0.5_zinc-mo-256.json
+    refactor-tacogfn/misc/generated_molecules/20240124_0.5_zinc-mo-256.json
 """
 
 import json
