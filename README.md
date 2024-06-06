@@ -34,8 +34,19 @@ of 100 molecules at inference time, and rank by predicted docking score. The
 inference script takes care of that. 
 
 ```bash
-python3 src/tacogfn/tasks/pharmaco_frag.py --hps_path "$HPS_PATH"
+python3 src/tacogfn/tasks/pocket_frag.py --hps_path "$HPS_PATH"
 ```
+
+### Finetuning TacoGFN
+
+If you wish to finetune the trained TacoGFN for a given target pocket, please
+run the script below.
+
+python src/tacogfn/tasks/finetune_pocket_frag_one_pocket.py \
+--model_path <path to trained base GFN from last step> \
+--pocket_index <One of the test pocket index>
+
+Please see the list of test idxs in scripts/test_idxs.txt
 
 ### Generating molecules and computing metrics
 
