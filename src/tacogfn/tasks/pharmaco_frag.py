@@ -396,9 +396,17 @@ class PharmacophoreTrainer(StandardOnlineTrainer):
         cfg.replay.warmup = 1_000
 
     def setup_env_context(self):
-        self.ctx = frag_mol_env.FragMolBuildingEnvContext(
-            max_frags=self.cfg.algo.max_nodes, num_cond_dim=self.task.num_cond_dim
+        if self.cfg.task.fragment_type == "zinc250k_50cutoff_brics":
+            fragments = fragment_const.ZINC250K_50CUTOFF_BRICS_FRAGMENTS
+        else:
+            fragments = fragment_const.GFLOWNET_FRAGMENTS
+
+        self.ctx = FragMolBuildingEnvContext(
+            max_frags=self.cfg.algo.max_nodes,
+            num_cond_dim=self.task.num_cond_dim,
+            fragments=fragments,
         )
+        print(f"Using {len(fragments)} fragments...")
 
     def setup_task(self):
         self.task = PharmacophoreTask(
