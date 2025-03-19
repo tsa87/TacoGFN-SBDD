@@ -289,9 +289,12 @@ class SEHMOOFragTrainer(SEHFragTrainer):
         )
 
     def setup_env_context(self):
-        if self.cfg.task.fragment_type == "zinc250k_50cutoff_brics":
-            fragments = fragment_const.ZINC250K_50CUTOFF_BRICS_FRAGMENTS
-        else:
+        try:
+            if self.cfg.task.fragment_type == "zinc250k_50cutoff_brics":
+                fragments = fragment_const.ZINC250K_50CUTOFF_BRICS_FRAGMENTS
+            else:
+                fragments = fragment_const.GFLOWNET_FRAGMENTS
+        except:
             fragments = fragment_const.GFLOWNET_FRAGMENTS
 
         self.ctx = FragMolBuildingEnvContext(

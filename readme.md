@@ -26,6 +26,11 @@ This package includes:
 - saved pocket-graphs in lmdb
 - misc files (data splitting, avg vina score, pocket centroid, generated molecules)
 
+Set current directory into pythonpath.
+```bash
+export PYTHONPATH=$PWD
+```
+
 Please also setup up Conda Environment and install neccessary dependencies.
 ```bash
 conda env create -f environment.yml
