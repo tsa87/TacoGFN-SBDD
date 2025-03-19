@@ -28,7 +28,7 @@ This package includes:
 
 Set current directory into pythonpath.
 ```bash
-export PYTHONPATH=$PWD
+export PYTHONPATH=.
 ```
 
 Please also setup up Conda Environment and install neccessary dependencies.

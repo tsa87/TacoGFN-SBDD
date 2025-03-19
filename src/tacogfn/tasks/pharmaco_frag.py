@@ -15,6 +15,7 @@ from rdkit.Chem import Descriptors
 from rdkit.Chem.rdchem import Mol as RDMol
 from torch import Tensor, nn
 from torch.utils.data import DataLoader, Dataset
+from src.tacogfn.const import fragment_const
 
 from src.tacogfn.algo.trajectory_balance import (
     PharmacophoreTrajectoryBalance,
@@ -35,6 +36,7 @@ from src.tacogfn.online_trainer import StandardOnlineTrainer
 from src.tacogfn.trainer import FlatRewards, GFNTask, RewardScalar
 from src.tacogfn.utils import molecules, sascore
 from src.tacogfn.utils.conditioning import TemperatureConditional
+from src.tacogfn.envs.frag_mol_env import FragMolBuildingEnvContext
 
 _HPS_PATH = flags.DEFINE_string(
     "hps_path",

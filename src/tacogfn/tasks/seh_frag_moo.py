@@ -12,26 +12,27 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch_geometric.data as gd
-from gflownet.algo.envelope_q_learning import (
+from src.tacogfn.algo.envelope_q_learning import (
     EnvelopeQLearning,
     GraphTransformerFragEnvelopeQL,
 )
-from gflownet.algo.multiobjective_reinforce import MultiObjectiveReinforce
-from gflownet.config import Config
-from gflownet.envs.frag_mol_env import FragMolBuildingEnvContext
-from gflownet.models import bengio2021flow
-from gflownet.tasks.seh_frag import SEHFragTrainer, SEHTask
-from gflownet.trainer import FlatRewards, RewardScalar
-from gflownet.utils import metrics, sascore
-from gflownet.utils.conditioning import (
+from src.tacogfn.algo.multiobjective_reinforce import MultiObjectiveReinforce
+from src.tacogfn.config import Config
+from src.tacogfn.envs.frag_mol_env import FragMolBuildingEnvContext
+from src.tacogfn.models import bengio2021flow
+from src.tacogfn.tasks.seh_frag import SEHFragTrainer, SEHTask
+from src.tacogfn.trainer import FlatRewards, RewardScalar
+from src.tacogfn.utils import metrics, sascore
+from src.tacogfn.utils.conditioning import (
     FocusRegionConditional,
     MultiObjectiveWeightedPreferences,
 )
-from gflownet.utils.multiobjective_hooks import MultiObjectiveStatsHook, TopKHook
+from src.tacogfn.utils.multiobjective_hooks import MultiObjectiveStatsHook, TopKHook
 from rdkit.Chem import QED, Descriptors
 from rdkit.Chem.rdchem import Mol as RDMol
 from torch import Tensor
 from torch.utils.data import Dataset
+from src.tacogfn.const import fragment_const
 
 
 class SEHMOOTask(SEHTask):
