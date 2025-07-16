@@ -1,5 +1,8 @@
 # TacoGFN: Target Conditioned GFlowNet for Structure-based Drug Design
 
+## Update
+We have made architecture improvements to TacoGFN - extending it for 3D generation / and ensuring molecular synthzability. We recommend you to check our new repository at [CGFlow (ICML 25') repository](https://github.com/tsa87/cgflow). 
+
 Accepted in **_TMLR (Transaction on Machine Learning Research)_** and spotlighted in **_NeurIPS GenBio Workshop 2023_** [[**arxiv**](https://arxiv.org/abs/2310.03223)]. 
 
 Official Github for **_TacoGFN: Target Conditioned GFlowNet for Structure-based Drug Design_** by Tony Shen, Seonghwan Seo,  Grayson Lee, Mohit Pandey, Jason Smith, Artem Cherkasov, Woo Youn Kim and Martin Ester.
